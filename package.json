@@ -14,11 +14,11 @@
     "node": ">=22"
   },
   "dependencies": {
-    "firebase": "^13.3.0",
-    "firebase-admin": "^14.5.1"
+    "firebase": "^13.3.0"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
+    "firebase-admin": "^14.5.1",
     "firebase-tools": "^15.36.0"
   }
 }

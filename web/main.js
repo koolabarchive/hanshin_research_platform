@@ -189,6 +189,8 @@ const pct = (a, b) => b ? Math.min(100, Math.round(a / b * 100)) : 0;
 const slotById = (st, id) => st.slots.find(s => s.id === id);
 
 /* ========== 공통 조각 ========== */
+// 지금은 이메일·문자 발송이 연결되어 있지 않다. 연구자 화면에서 이 점을 분명히 알린다.
+const appOnlyNote = () => `<div class="callout warn" style="margin-bottom:16px">${icon("info",18)}<span>지금은 이메일·문자 발송이 연결되어 있지 않아, 초대와 안내는 참여자의 <b>알림함</b>으로만 전달됩니다. 참여자는 로그인해야 확인할 수 있습니다.</span></div>`;
 function fld(label, id, control, hint = "", req = false){
   return `<div class="field"><label class="label" for="${id}">${label}${req ? ' <span class="req" aria-hidden="true">*</span>' : ""}</label>${control}${hint ? `<p class="hint">${hint}</p>` : ""}</div>`;
 }
@@ -255,8 +257,8 @@ function vLanding(){
     <div class="feat3">
       <article class="feat" style="background:var(--t-peach)"><span class="tag tag-orange" style="align-self:flex-start">연구 등록</span><h3 class="h4">설명문·동의서·설문지를 단계별로</h3><p class="body-sm">7단계 작성 화면을 따라가면 IRB 승인번호, 연구설명문 필수 항목, 전자동의서, 자기보고식 설문지가 빠짐없이 채워집니다.</p>
         <div class="mini"><div class="ln"><span>1 기본 정보</span>${icon("check",14)}</div><div class="ln"><span>2 연구설명문</span>${icon("check",14)}</div><div class="ln"><span>3 동의서</span>${icon("check",14)}</div><div class="ln steel"><span>4 설문지 · 7문항</span><span>작성 중</span></div></div></article>
-      <article class="feat" style="background:var(--t-sky)"><span class="tag tag-sky" style="align-self:flex-start">안내 발송</span><h3 class="h4">초대·리마인더·공지를 이메일과 문자로</h3><p class="body-sm">참여 단계별로 대상을 골라 보냅니다. 문자는 90byte 기준으로 SMS와 LMS를 나눠 보여 주고, 미응답자 리마인더는 자동으로 나갑니다.</p>
-        <div class="mini"><div class="ln"><b>초대 후 미응답</b><span class="num">21명</span></div><div class="ln steel"><span>문자 · 74 byte · SMS</span><span>자동 리마인더</span></div></div></article>
+      <article class="feat" style="background:var(--t-sky)"><span class="tag tag-sky" style="align-self:flex-start">안내 발송</span><h3 class="h4">초대·안내·공지를 참여자 알림함으로</h3><p class="body-sm">참여 단계별로 대상을 골라 보냅니다. 연구자는 참여자의 연락처를 몰라도 되고, 참여자는 로그인하면 알림함에서 확인합니다.</p>
+        <div class="mini"><div class="ln"><b>초대 후 미응답</b><span class="num">21명</span></div><div class="ln steel"><span>알림함 전달</span><span>발송 기록 보관</span></div></div></article>
       <article class="feat" style="background:var(--t-mint)"><span class="tag tag-green" style="align-self:flex-start">보상 지급</span><h3 class="h4">완료 건을 골라 지급하고 대장을 바로</h3><p class="body-sm">참여 완료된 건만 지급 대상으로 모입니다. 지급 처리하면 참여자에게 알림이 가고, 연구비 정산용 지급 대장을 표로 복사할 수 있습니다.</p>
         <div class="mini"><div class="ln"><span>지급 대기</span><b class="num">22건 · 110,000원</b></div><div class="ln steel"><span>지급 완료</span><span class="num">44건</span></div></div></article>
     </div>
@@ -276,7 +278,7 @@ function vLanding(){
   <section class="sec" style="padding-top:0"><div class="wrap">
     <div class="sec-head"><h2 class="h2">모집에서 보상까지 여섯 단계</h2></div>
     <div class="steps6">
-      ${[["연구 등록","연구자가 설명문, 동의서, 설문지, 참여 조건을 작성합니다."],["연구지원팀 확인","IRB 승인번호와 필수 항목을 확인한 뒤 공개합니다."],["대기풀 매칭","조건에 맞는 참여자에게만 초대가 갑니다."],["전자동의","설명문을 끝까지 읽고 항목별로 동의한 뒤 서명합니다."],["설문·일정","온라인 설문에 답하거나 실험·면담 시간을 예약합니다."],["보상 지급","완료 건을 지급 처리하면 참여자에게 알림이 갑니다."]].map((s,i) => `<div class="step6"><div class="n">${i+1}단계</div><h4>${s[0]}</h4><p class="body-sm slate">${s[1]}</p></div>`).join("")}
+      ${[["연구 등록","연구자가 설명문, 동의서, 설문지, 참여 조건을 작성합니다."],["연구지원팀 확인","IRB 승인번호와 필수 항목을 확인한 뒤 공개합니다."],["대기풀 매칭","조건에 맞는 참여자의 알림함에 초대가 갑니다."],["전자동의","설명문을 끝까지 읽고 항목별로 동의한 뒤 서명합니다."],["설문·일정","온라인 설문에 답하거나 실험·면담 시간을 예약합니다."],["보상 지급","완료 건을 지급 처리하면 참여자에게 알림이 갑니다."]].map((s,i) => `<div class="step6"><div class="n">${i+1}단계</div><h4>${s[0]}</h4><p class="body-sm slate">${s[1]}</p></div>`).join("")}
     </div>
   </div></section>
 
@@ -285,7 +287,7 @@ function vLanding(){
     <div class="safe-grid">
       ${[["shield","var(--t-lav)","var(--purple-800)","IRB 승인 연구만 공개","승인번호와 유효기간을 연구지원팀이 확인한 연구만 모집 화면에 나타납니다."],
          ["lock","var(--t-sky)","#0b4f8a","가명 ID로만 관리","연구자에게는 P-1043 같은 가명 ID와 연령대·신분만 보입니다. 이름과 연락처는 공개되지 않습니다."],
-         ["mail","var(--t-mint)","var(--green-ink)","연락은 플랫폼이 대행","초대, 리마인더, 보상 안내는 모두 플랫폼을 거쳐 발송됩니다. 플랫폼 밖 직접 연락은 서약으로 금지됩니다."],
+         ["mail","var(--t-mint)","var(--green-ink)","연락은 플랫폼이 대행","초대, 안내, 보상 안내는 모두 플랫폼의 알림함으로 전달됩니다. 플랫폼 밖 직접 연락은 서약으로 금지됩니다."],
          ["user","var(--t-peach)","var(--orange-deep)","만 19세 이상, 이메일 인증","교내 구성원은 학교 이메일로 소속을 확인하고, 학외 참여자는 따로 구분해 표시합니다. 연구마다 대상 범위를 정합니다."],
          ["arrow","var(--t-rose)","var(--pink-deep)","언제든 철회, 자료 폐기 선택","철회할 때 이미 낸 응답을 폐기할지 참여자가 직접 고릅니다."],
          ["eye","var(--t-yellow)","#6b5300","모든 처리 기록","심사, 발송, 보상 지급, 자료 열람 기록이 남고 연구지원팀이 확인합니다."]].map(([ic,bg,fg,t,d]) => `<div class="safe"><div class="ic" style="background:${bg};color:${fg}">${icon(ic,18)}</div><h3 class="h5">${t}</h3><p class="body-sm slate">${d}</p></div>`).join("")}
@@ -306,7 +308,7 @@ function vLanding(){
     <details><summary>IRB 승인 전에도 연구를 등록할 수 있나요?</summary><p>작성과 임시 저장은 언제든 할 수 있습니다. 심사 제출에는 IRB 승인번호와 승인 통지서 파일이 필요하고, 연구지원팀이 확인한 뒤에 모집 화면에 공개됩니다.</p></details>
     <details><summary>연구자가 참여자의 이름이나 전화번호를 볼 수 있나요?</summary><p>볼 수 없습니다. 연구자에게는 가명 ID, 연령대, 신분, 참여 단계만 보입니다. 상품권 발송처럼 연락처가 필요한 일은 플랫폼이 등록된 번호로 대신 처리합니다.</p></details>
     <details><summary>대기풀에 등록하면 모든 연구에 참여해야 하나요?</summary><p>아닙니다. 대기풀은 안내를 받겠다는 뜻일 뿐이고, 각 연구마다 설명문을 읽고 직접 동의해야 참여가 시작됩니다. 안내를 받지 않으려면 언제든 일시정지할 수 있습니다.</p></details>
-    <details><summary>문자 발송 비용은 어떻게 되나요?</summary><p>운영 단계에서는 학교 문자 발송 계정과 연동합니다. 90byte 이하는 SMS, 초과하면 LMS로 나가므로 작성 화면에서 byte 수를 확인할 수 있게 했습니다.</p></details>
+    <details><summary>초대나 안내는 어떻게 받나요?</summary><p>지금은 플랫폼 안의 알림함으로 전달됩니다. 로그인하면 홈과 알림함에서 확인할 수 있습니다. 이메일·문자 발송은 운영 단계에서 발송 계정을 연결한 뒤 제공합니다.</p></details>
   </div></section>
 
   <section class="wrap"><div class="cta-light"><h2 class="h2">다음 학기 모집, 지금 준비하세요</h2><p class="sub slate">연구를 등록해 두면 승인과 동시에 대기풀 안내가 나갑니다.</p>
@@ -574,40 +576,37 @@ function tInvite(st, en, c){
   const cr = st.criteria;
   const dist = (title, arr) => `<div><p class="label" style="margin-bottom:8px">${title}</p><div class="dist">${arr.map(([k, n]) => `<div class="d"><span class="slate">${k}</span><div class="bar"><i style="width:${pct(n, el.n)}%"></i></div><span class="num" style="text-align:right">${n}명</span></div>`).join("")}</div></div>`;
   const sample = SAMPLE;
-  return `<div class="grid-main">
+  return `${appOnlyNote()}<div class="grid-main">
     <div class="stack">
       <div class="card stack"><div class="between"><h2 class="h5">초대할 수 있는 대기풀</h2><span class="caption steel">이미 초대·참여한 사람, 최근 7일 안내 3회 이상, 일시정지 제외</span></div>
         <div class="livecount"><div class="v num">${el.n}명</div><div class="body-sm">만 ${cr.ageMin}~${cr.ageMax}세 · ${cr.statuses.length ? cr.statuses.join("·") : "신분 무관"} · ${cr.genders.length ? cr.genders.join("·") : "성별 무관"} · ${cr.depts.length ? cr.depts.length + "개 학과" : "학과 무관"}</div></div>
         ${el.n ? `<div class="two">${dist("신분", st1)}${dist("연령대", ag)}</div>` : ""}</div>
       <div class="card stack"><h2 class="h5">초대 메시지 미리보기</h2>
-        <div><p class="label">이메일 · ${esc(fillTpl(st.templates.inviteSubject, st, sample))}</p><p class="body-sm charcoal" style="white-space:pre-line;margin-top:8px;padding:14px;background:var(--surface-soft);border-radius:8px">${esc(fillTpl(st.templates.inviteBody, st, sample))}</p></div>
-        <div><p class="label">문자 · ${eucBytes(fillTpl(st.templates.sms, st, sample))} byte · ${eucBytes(fillTpl(st.templates.sms, st, sample)) > 90 ? "LMS" : "SMS"}</p><p class="body-sm charcoal" style="margin-top:8px;padding:14px;background:var(--surface-soft);border-radius:8px">${esc(fillTpl(st.templates.sms, st, sample))}</p></div>
+        <div><p class="label">${esc(fillTpl(st.templates.inviteSubject, st, sample))}</p><p class="body-sm charcoal" style="white-space:pre-line;margin-top:8px;padding:14px;background:var(--surface-soft);border-radius:8px">${esc(fillTpl(st.templates.inviteBody, st, sample))}</p></div>
         <p class="caption steel">문구는 연구 정보 탭이 아니라 등록 단계의 안내·보상에서 정합니다. {{참여자ID}} 같은 변수는 발송할 때 플랫폼이 채웁니다.</p></div>
     </div>
     <aside class="card stack"><h2 class="h5">초대 보내기</h2>
       ${fld("초대 인원","f-invN",`<input class="input num" id="f-invN" data-f="invN" type="number" min="1" max="${el.n}" value="${fv("invN")}">`, `대기풀에서 무작위로 고릅니다. 최대 ${el.n}명`)}
-      <div class="field"><span class="label">발송 채널</span>${[["both","이메일 + 문자"],["email","이메일만"],["sms","문자만"]].map(([k, t]) => `<label class="check"><input type="radio" name="invCh" id="invCh-${k}" data-f="invCh" value="${k}" ${ui.form.invCh===k?"checked":""}>${t}</label>`).join("")}<p class="hint">문자 수신을 끈 참여자에게는 이메일로 대신 보냅니다.</p></div>
-      <button class="btn btn-primary w100" data-act="sendInvites" data-id="${st.id}" ${el.n ? "" : "disabled"}>${icon("mail",16)}초대 보내기</button>
+      <button class="btn btn-primary w100" data-act="sendInvites" data-id="${st.id}" ${el.n ? "" : "disabled"}>${icon("mail",16)}알림함으로 초대 보내기</button>
     </aside></div>`;
 }
 const SEGMENTS = {pending:["초대 후 미응답", e => e.status === "invited"], consented:["동의 후 미완료", e => e.status === "consented"], scheduled:["일정 확정자", e => e.status === "scheduled"], done:["참여 완료자", e => DONE.includes(e.status)], all:["전체 참여자 (철회 제외)", e => e.status !== "withdrawn"]};
 function tSend(st, en){
-  if (ui.form.sendFor !== st.id){ Object.assign(ui.form, {sendFor:st.id, seg:"pending", ch:"sms", subj:`[한신 리서치풀] ${st.title} 안내`, body:`{{참여자ID}} 님, ${st.title} 연구 참여 안내를 다시 드려요. 마감은 {{마감일}}입니다.`}); }
+  if (ui.form.sendFor !== st.id){ Object.assign(ui.form, {sendFor:st.id, seg:"pending", ch:"app", subj:`[한신 리서치풀] ${st.title} 안내`, body:`{{참여자ID}} 님, ${st.title} 연구 참여 안내를 다시 드려요. 마감은 {{마감일}}입니다.`}); }
   const segN = en.filter(SEGMENTS[ui.form.seg][1]).length;
   const logs = S.sendLogs.filter(l => l.studyId === st.id).sort((a, b) => b.at - a.at);
-  return `<div class="grid-main">
+  return `${appOnlyNote()}<div class="grid-main">
     <div class="card stack"><h2 class="h5">안내 보내기</h2>
-      <div class="two">${fld("받는 사람","f-seg",`<select class="input" id="f-seg" data-f="seg" data-rr>${Object.entries(SEGMENTS).map(([k, [t]]) => `<option value="${k}" ${ui.form.seg===k?"selected":""}>${t}</option>`).join("")}</select>`, `<span id="segN">${segN}명</span>에게 발송됩니다.`)}
-      ${fld("채널","f-ch",`<select class="input" id="f-ch" data-f="ch" data-rr>${[["sms","문자"],["email","이메일"],["both","이메일 + 문자"]].map(([k, t]) => `<option value="${k}" ${ui.form.ch===k?"selected":""}>${t}</option>`).join("")}</select>`)}</div>
-      ${ui.form.ch !== "sms" ? fld("이메일 제목","f-subj",`<input class="input" id="f-subj" data-f="subj" value="${fv("subj")}">`) : ""}
-      ${fld("내용","f-body",`<textarea class="input" id="f-body" data-f="body" rows="5">${fv("body")}</textarea>`, `<span class="bytes" data-bytes="f-body"></span> · 사용할 수 있는 변수: {{참여자ID}} {{연구명}} {{마감일}} {{소요시간}} {{보상}}`)}
+      <div class="two">${fld("받는 사람","f-seg",`<select class="input" id="f-seg" data-f="seg" data-rr>${Object.entries(SEGMENTS).map(([k, [t]]) => `<option value="${k}" ${ui.form.seg===k?"selected":""}>${t}</option>`).join("")}</select>`, `<span id="segN">${segN}명</span>에게 발송됩니다.`)}</div>
+      ${fld("제목","f-subj",`<input class="input" id="f-subj" data-f="subj" value="${fv("subj")}">`)}
+      ${fld("내용","f-body",`<textarea class="input" id="f-body" data-f="body" rows="5">${fv("body")}</textarea>`, `사용할 수 있는 변수: {{참여자ID}} {{연구명}} {{마감일}} {{소요시간}} {{보상}}`)}
       <div><p class="label" style="margin-bottom:6px">미리보기 (P-1000 기준)</p><p id="composePreview" class="body-sm charcoal" style="white-space:pre-line;padding:14px;background:var(--surface-soft);border-radius:8px"></p></div>
       <div class="row" style="justify-content:flex-end"><button class="btn btn-primary" data-act="sendCompose" data-id="${st.id}" ${segN ? "" : "disabled"}>${segN}명에게 보내기</button></div>
     </div>
     <aside class="card stack"><h2 class="h5">자동 리마인더</h2>
       <label class="check"><input type="checkbox" id="ar1" data-sb="templates.remind3" data-sid="${st.id}" ${st.templates.remind3?"checked":""}><span>초대 후 3일 동안 응답이 없으면 문자 1회</span></label>
       <label class="check"><input type="checkbox" id="ar2" data-sb="templates.remindEnd" data-sid="${st.id}" ${st.templates.remindEnd?"checked":""}><span>모집 마감 2일 전, 동의 후 미완료자에게 이메일 1회</span></label>
-      <p class="caption steel">자동 리마인더도 주 3회 안내 제한에 포함됩니다.</p></aside>
+      <p class="caption steel">자동 리마인더는 이메일·문자 발송을 연결한 뒤에 동작합니다. 지금은 설정만 저장됩니다.</p></aside>
   </div>
   <h2 class="h5" style="margin:32px 0 12px">발송 기록</h2>
   <div class="tbl-wrap"><table class="tbl"><thead><tr><th>일시</th><th>종류</th><th>채널</th><th>대상</th><th class="num">건수</th><th>제목·내용</th></tr></thead><tbody>
@@ -620,7 +619,7 @@ function tNotice(st){
   </div><aside class="card stack"><h2 class="h5">공지 등록</h2><p class="body-sm slate">연구 상세 화면에 표시됩니다. 일정 변경, 장소 안내, 점검 공지에 쓰세요.</p>
     ${fld("제목","f-nt",`<input class="input" id="f-nt" data-f="nt" value="${fv("nt")}">`)}
     ${fld("내용","f-nb",`<textarea class="input" id="f-nb" data-f="nb" rows="5">${fv("nb")}</textarea>`)}
-    <label class="check"><input type="checkbox" id="f-nn" data-f="nn" ${ui.form.nn !== false ? "checked" : ""}><span>동의 완료 이상인 참여자에게 이메일로도 알리기</span></label>
+    <label class="check"><input type="checkbox" id="f-nn" data-f="nn" ${ui.form.nn !== false ? "checked" : ""}><span>동의 완료 이상인 참여자의 알림함에도 알리기</span></label>
     <button class="btn btn-primary" data-act="addNotice" data-id="${st.id}">공지 등록</button></aside></div>`;
 }
 function tReward(st, en, c){
@@ -820,7 +819,7 @@ function rPool(u){
 }
 function tInquiries(st){
   const qs = S.inquiries.filter(q => q.studyId === st.id);
-  return `<div class="callout info" style="margin-bottom:16px">${icon("lock",18)}<span>참여자의 문의는 가명 ID로만 표시됩니다. 답변은 플랫폼이 참여자의 알림함과 이메일로 전달하므로 개인 연락처를 주고받을 필요가 없습니다.</span></div>
+  return `<div class="callout info" style="margin-bottom:16px">${icon("lock",18)}<span>참여자의 문의는 가명 ID로만 표시됩니다. 답변은 플랫폼이 참여자가 연구 화면에서 확인하므로 개인 연락처를 주고받을 필요가 없습니다.</span></div>
   ${qs.length ? `<div class="stack">${qs.map(q => `<div class="card stack-sm"><div class="between"><b class="mono">${esc(q.pid)}</b><span class="caption steel">${fmtDT(q.at)}</span></div>
     ${q.reported ? `<p class="body-sm steel">신고한 문의입니다. 내용은 가려졌고 연구지원팀이 확인합니다.</p>` : `<p class="body-sm charcoal" style="white-space:pre-line">${esc(q.body)}</p>
     ${q.reply ? `<div style="padding:12px 14px;background:var(--surface-soft);border-radius:8px"><p class="caption steel">내 답변 · ${fmtDT(q.repliedAt)}</p><p class="body-sm charcoal" style="white-space:pre-line;margin-top:4px">${esc(q.reply)}</p></div>` :
@@ -868,7 +867,7 @@ function pHome(u){
     <div class="pool-card ${paused ? "paused" : ""}"><div class="stack-sm">
       <div class="row"><span class="tag ${paused ? "tag-gray" : "tag-purple"}" style="background:var(--canvas)">${u.pool.joined ? (paused ? "안내 일시정지" : "대기풀 등록 중") : "대기풀 미등록"}</span><span class="mono caption">${u.pid}</span></div>
       <h2 class="h4">${paused ? "지금은 새 연구 안내를 받지 않아요" : "조건에 맞는 연구가 열리면 바로 알려드려요"}</h2>
-      <p class="body-sm">${u.contact.sms ? "이메일과 문자" : "이메일"}로 안내합니다 · 등록일 ${fmtD(u.pool.since || u.joinedAt)} · 참여 완료 ${doneN}회 · 받은 보상 ${won(rewardSum)}</p></div>
+      <p class="body-sm">알림함으로 안내합니다 · 등록일 ${fmtD(u.pool.since || u.joinedAt)} · 참여 완료 ${doneN}회 · 받은 보상 ${won(rewardSum)}</p></div>
       <div class="row"><button class="btn ${paused ? "btn-primary" : "btn-secondary"}" ${paused ? "" : 'style="background:var(--canvas)"'} data-act="togglePause">${paused ? "안내 다시 받기" : `${icon("pause",15)}안내 일시정지`}</button></div></div>
     ${ongoing.length ? `<section style="margin-bottom:32px"><h2 class="h5" style="margin-bottom:12px">이어서 할 일</h2><div class="list">${ongoing.map(e => { const st = studyById(e.studyId); const sl = e.slotId ? slotById(st, e.slotId) : null; return `<div class="srow" style="cursor:default"><div><h3>${tintDot(st)}${esc(st.title)}</h3><div class="meta">${tag(enrLabel(e))}${sl ? `<span>${fmtDT(sl.at)} · ${esc(st.location)}</span>` : ""}</div></div><div style="text-align:right">${e.status === "scheduled" ? `<span class="body-sm steel">예약한 시간에 방문해 주세요</span>` : `<button class="btn btn-primary btn-sm" data-act="pApply" data-id="${st.id}">이어서 참여하기</button>`}</div></div>`; }).join("")}</div></section>` : ""}
     <section style="margin-bottom:32px"><div class="between" style="margin-bottom:12px"><h2 class="h5">회원님께 맞는 연구 <span class="steel num" style="font-weight:500">${fit.length}</span></h2><button class="btn-link" data-act="go" data-v="p-studies">모집 중인 연구 모두 보기</button></div>
@@ -945,7 +944,7 @@ function pFlow(u){
   } else {
     const e = myEnr(u, st.id); const sl = e && e.slotId ? slotById(st, e.slotId) : null;
     body = `<div class="card card-tint" style="background:var(--t-mint);padding:32px"><h2 class="h3" style="color:var(--ink)">${sl ? "예약이 확정되었어요" : "참여해 주셔서 감사합니다"}</h2>
-      <p class="sub" style="margin-top:10px">${sl ? `${fmtDT(sl.at)}, ${esc(st.location)}에서 만나요. 하루 전에 문자로 다시 알려드립니다.` : `보상(${esc(rewardText(st))})은 ${esc(st.reward.timing)} 등록하신 휴대전화로 발송됩니다.`}</p>
+      <p class="sub" style="margin-top:10px">${sl ? `${fmtDT(sl.at)}, ${esc(st.location)}에서 만나요. 일정은 알림함과 내 참여 기록에서 다시 확인할 수 있어요.` : `보상(${esc(rewardText(st))})은 ${esc(st.reward.timing)} 등록하신 휴대전화로 발송됩니다.`}</p>
       <div class="row" style="margin-top:20px"><button class="btn btn-dark" data-act="go" data-v="p-history">내 참여 기록 보기</button><button class="btn btn-secondary" style="background:var(--canvas)" data-act="go" data-v="p-home">홈으로</button></div></div>`;
   }
   return `<div class="page" style="max-width:820px">
@@ -977,9 +976,9 @@ function pHistory(u){
 }
 function pInbox(u){
   const ms = S.messages.filter(m => m.toUserId === u.id).sort((a, b) => b.at - a.at);
-  return `<div class="page" style="max-width:880px"><div class="page-head"><div><h1 class="h2">알림함</h1><p class="slate" style="margin-top:4px">플랫폼이 보낸 이메일과 문자가 모두 여기에 남습니다.</p></div>${ms.some(m => !m.read) ? `<button class="btn btn-secondary btn-sm" data-act="readAll">모두 읽음으로</button>` : ""}</div>
+  return `<div class="page" style="max-width:880px"><div class="page-head"><div><h1 class="h2">알림함</h1><p class="slate" style="margin-top:4px">초대와 안내, 일정·보상 알림이 모두 여기에 남습니다.</p></div>${ms.some(m => !m.read) ? `<button class="btn btn-secondary btn-sm" data-act="readAll">모두 읽음으로</button>` : ""}</div>
     ${ms.length ? ms.map(m => `<div class="msg ${m.read ? "" : "unread"}"><button class="mh" data-act="readMsg" data-id="${m.id}" aria-expanded="${ui.openMsg===m.id}">
-      <span class="tag ${m.channel === "email" ? "tag-sky" : "tag-green"}">${m.channel === "email" ? "이메일" : "문자"}</span>
+      <span class="tag ${m.channel === "app" ? "tag-purple" : m.channel === "email" ? "tag-sky" : "tag-green"}">${m.channel === "app" ? "알림" : m.channel === "email" ? "이메일" : "문자"}</span>
       <span style="min-width:0"><span class="t body-sm" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.read ? "" : '<span class="udot"></span>'}${esc(m.subject || m.body)}</span><span class="caption steel">${esc(studyById(m.studyId)?.title || "")}</span></span>
       <span class="caption steel when num">${fmtDT(m.at)}</span></button>
       ${ui.openMsg === m.id ? `<div class="mb">${esc(m.body)}${m.studyId && studyById(m.studyId).status === "recruiting" && ["invite","newstudy"].includes(m.kind) ? `<div style="margin-top:12px"><button class="btn btn-primary btn-sm" data-act="pOpen" data-id="${m.studyId}">연구 보러 가기</button></div>` : ""}</div>` : ""}</div>`).join("") : `<div class="empty">받은 알림이 없어요.</div>`}</div>`;
@@ -1012,7 +1011,7 @@ function aHome(u){
   else if (t === "researchers") body = `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>이름</th><th>과정 · 소속</th><th>지도교수</th><th>윤리교육 이수일</th><th>이수증</th><th>상태</th><th></th></tr></thead><tbody>
     ${pend.sort((a, b) => a.verified - b.verified).map(x => `<tr><td><b>${esc(x.name)}</b><div class="caption steel">${esc(x.email)}</div></td><td class="body-sm">${esc(x.program)}<div class="caption steel">${esc(x.dept)}</div></td><td>${esc(x.advisor)}</td><td class="num">${x.ethicsDate ? fmtD(endTs(x.ethicsDate)) : "-"}</td><td class="caption">${x.ethicsFileId ? `<button class="btn-link" data-act="dlFile" data-id="${esc(x.ethicsFileId)}">${esc(x.ethicsFile)}</button>` : esc(x.ethicsFile || "-")}</td>
     <td>${x.verified ? '<span class="tag tag-green">확인됨</span>' : '<span class="tag tag-orange">확인 대기</span>'}</td><td>${x.verified ? "" : `<button class="btn btn-primary btn-sm" data-act="verify" data-id="${x.id}">재학·이수 확인</button>`}</td></tr>`).join("")}</tbody></table></div>`;
-  else if (t === "rewards") body = `<div class="callout info" style="margin-bottom:16px">${icon("lock",18)}<span>연구자가 지급 처리한 모바일 상품권입니다. 연구자는 참여자의 번호를 볼 수 없으므로 연구지원팀이 상품권을 보낸 뒤 '발송 완료'를 눌러 주세요. 발송 완료 후에는 번호가 다시 가려지고, 참여자에게 발송 안내 문자가 나갑니다.</span></div>
+  else if (t === "rewards") body = `<div class="callout info" style="margin-bottom:16px">${icon("lock",18)}<span>연구자가 지급 처리한 모바일 상품권입니다. 연구자는 참여자의 번호를 볼 수 없으므로 연구지원팀이 상품권을 보낸 뒤 '발송 완료'를 눌러 주세요. 발송 완료 후에는 번호가 다시 가려지고, 참여자의 알림함에 발송 안내가 남습니다.</span></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>가명 ID</th><th>연구</th><th>수신 번호</th><th class="num">금액</th><th>지급 처리</th><th>상태</th><th></th></tr></thead><tbody>
     ${rq.length ? rq.map(r => `<tr><td class="mono">${esc(r.pid)}</td><td class="body-sm">${esc(r.study)}</td><td class="mono">${esc(r.phone)}</td><td class="num">${won(r.amount)}</td><td class="num steel">${fmtDT(r.paidAt)}</td><td>${r.sentAt ? `<span class="tag tag-green">발송 완료 ${fmtMD(r.sentAt)}</span>` : `<span class="tag tag-orange">발송 대기</span>`}</td><td>${r.sentAt ? "" : `<button class="btn btn-primary btn-sm" data-act="rewardSent" data-id="${r.id}">발송 완료</button>`}</td></tr>`).join("") : `<tr><td colspan="7" class="steel" style="text-align:center;padding:28px">발송할 상품권이 없어요.</td></tr>`}</tbody></table></div>`;
   else if (t === "studies") body = `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>연구</th><th>연구자</th><th>상태</th><th>IRB</th><th class="num">완료/목표</th><th>마감</th></tr></thead><tbody>
@@ -1035,7 +1034,7 @@ function aReview(u){
     <aside class="stack" style="position:sticky;top:20px">
       <div class="card stack"><h2 class="h5">확인 항목</h2>${REVIEW_CHECKS.map((c, i) => `<label class="check"><input type="checkbox" id="rc${i}" data-f="rc${i}" data-rr ${ui.form["rc" + i]?"checked":""}><span>${c}</span></label>`).join("")}
         <div class="livecount" style="padding:14px 16px"><p class="caption">조건에 맞는 대기풀</p><div class="num" style="font-size:24px;font-weight:600;color:var(--ink)">${st._poolMatch ?? 0}명</div></div>
-        <label class="check"><input type="checkbox" id="rbc" data-f="rbc" ${ui.form.rbc !== false ? "checked" : ""}><span>승인과 함께 조건에 맞는 대기풀에 새 연구 안내 보내기</span></label>
+        <label class="check"><input type="checkbox" id="rbc" data-f="rbc" ${ui.form.rbc !== false ? "checked" : ""}><span>승인과 함께 조건에 맞는 대기풀의 알림함에 새 연구 안내 보내기</span></label>
         <button class="btn btn-primary" data-act="approve" data-id="${st.id}" ${allChecked ? "" : "disabled"}>승인하고 공개</button>
         ${allChecked ? "" : `<p class="caption steel">확인 항목 4개를 모두 체크하면 승인할 수 있어요.</p>`}</div>
       <div class="card stack"><h2 class="h5">보완 요청</h2>${fld("연구자에게 보낼 의견","f-rj",`<textarea class="input" id="f-rj" data-f="rj" rows="4" placeholder="예: 연구설명문의 녹음 파일 보관 기간이 승인본과 다릅니다.">${fv("rj")}</textarea>`)}
@@ -1208,7 +1207,7 @@ const ACT = {
   },
   selAll: el => { const pend = enrOf(el.dataset.id).filter(e => e.status === "completed"); const all = pend.every(e => ui.sel.has(e.id)); pend.forEach(e => all ? ui.sel.delete(e.id) : ui.sel.add(e.id)); render(); },
   payPick: el => { const st = studyById(el.dataset.id); const ids = enrOf(st.id).filter(e => e.status === "completed" && ui.sel.has(e.id));
-    openModal({title:`${ids.length}건을 지급 처리할까요?`, body:`<p class="slate">${esc(st.reward.type)} ${won(st.reward.amount)} × ${ids.length}건 = <b class="num">${won(st.reward.amount * ids.length)}</b><br>${st.reward.type === "모바일 상품권" ? "참여자에게 지급 접수 안내가 가고, 연구지원팀이 등록된 번호로 상품권을 보냅니다." : "참여자에게 지급 안내가 가고, 지급 완료 목록으로 옮겨집니다."}</p>`, actions:[{label:"취소", act:"modalClose"}, {label:"지급 처리", act:"payConfirm", cls:"btn-primary", data:`data-id="${st.id}"`}]}); },
+    openModal({title:`${ids.length}건을 지급 처리할까요?`, body:`<p class="slate">${esc(st.reward.type)} ${won(st.reward.amount)} × ${ids.length}건 = <b class="num">${won(st.reward.amount * ids.length)}</b><br>${st.reward.type === "모바일 상품권" ? "참여자의 알림함에 지급 접수 안내가 남고, 연구지원팀이 등록된 번호로 상품권을 보냅니다." : "참여자에게 지급 안내가 가고, 지급 완료 목록으로 옮겨집니다."}</p>`, actions:[{label:"취소", act:"modalClose"}, {label:"지급 처리", act:"payConfirm", cls:"btn-primary", data:`data-id="${st.id}"`}]}); },
   payConfirm: async el => { const ids = enrOf(el.dataset.id).filter(e => e.status === "completed" && ui.sel.has(e.id)).map(e => e.id);
     ui.modal = null; const j = await call("pay", {id:el.dataset.id, ids}); if (!j) return; ui.sel = new Set(); done(j); },
   copyLedger: el => { const st = studyById(el.dataset.id); const rows = enrOf(st.id).filter(e => DONE.includes(e.status)).sort((a, b) => a.completedAt - b.completedAt);
@@ -1260,7 +1259,7 @@ const ACT = {
   withdrawConfirm: async el => { const choice = ui.form.wd === "keep" ? "keep" : "destroy"; ui.form.wd = null; ui.modal = null; ui.flow = null; done(await call("withdraw", {id:el.dataset.id, choice})); },
   viewConsent: el => { const e = S.enrollments.find(x => x.id === el.dataset.id), st = studyById(e.studyId); const items = e.consentDoc ? e.consentDoc.items : st.consent;
     openModal({title:"연구참여 동의서", body:`<p class="body-sm slate">${esc(st.title)} · IRB ${esc(st.irbNo)}</p><ol class="body-sm" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">${items.map(c => `<li>${esc(c)} <span class="tag tag-green">동의</span></li>`).join("")}</ol><p class="body-sm">서명 ${esc(e.signature || me().name)} · ${fmtD(e.consentAt)}</p>`, actions:[{label:"닫기", act:"modalClose"}]}); },
-  askOpen: el => { ui.form.askBody = ""; openModal({title:"연구자에게 문의하기", body:`<p class="body-sm slate">연구자에게는 가명 ID로만 전달됩니다. 답변은 알림함과 이메일로 알려드려요. 전화번호 같은 개인 연락처는 적지 말아 주세요.</p>
+  askOpen: el => { ui.form.askBody = ""; openModal({title:"연구자에게 문의하기", body:`<p class="body-sm slate">연구자에게는 가명 ID로만 전달됩니다. 답변은 이 연구 화면의 '내 문의'에 표시돼요. 전화번호 같은 개인 연락처는 적지 말아 주세요.</p>
     ${fld("문의 내용","ask-body",`<textarea class="input" id="ask-body" data-f="askBody" rows="5" maxlength="1000" placeholder="예: 예약한 시간을 바꿀 수 있을까요?"></textarea>`)}`,
     actions:[{label:"취소", act:"modalClose"}, {label:"문의 보내기", act:"askSend", cls:"btn-primary", data:`data-id="${el.dataset.id}"`}]}); },
   askSend: async el => { const j = await run("ask", {studyId:el.dataset.id, body:ui.form.askBody}); if (j.error) return toast(j.error); ui.form.askBody = ""; ui.modal = null; render(); toast(j.toast); },

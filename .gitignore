@@ -4,4 +4,3 @@ public/app.js
 .firebase/
 serviceAccount*.json
 .env
-functions/.env*

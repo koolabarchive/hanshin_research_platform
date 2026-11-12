@@ -3,7 +3,7 @@
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
-const D = require('../functions/domain');
+const D = require('../web/domain');
 
 const FS = process.env.FIRESTORE_EMULATOR_HOST;
 const AU = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -39,8 +39,8 @@ const login = (email, name) => {
   logins.push({ uid, email, password: PASSWORD, emailVerified: true, displayName: name });
   return uid;
 };
-// 이름·연락처. synthetic 표시가 있으면 Functions가 실제 메일·문자를 보내지 않는다.
-const contact = (uid, name, phone, email) => put(`users/${uid}/private`, 'contact', { name, phone, email, synthetic: true });
+// 이름·연락처(본인만 읽는 문서).
+const contact = (uid, name, phone, email) => put(`users/${uid}/private`, 'contact', { name, phone, email });
 const owners = new Map();
 
 async function main() {
@@ -58,7 +58,7 @@ async function main() {
   contact(adminId, '연구윤리지원팀', '', 'research-ethics@hs.ac.kr');
   const researcher = (email, name, phone, program, dept, advisor, ethOffset, file, verified, joined) => {
     const id = login(email, name);
-    put('users', id, { seeded: true, role: 'researcher', name, program, dept, advisor, ethicsDate: ymd(ethOffset), ethicsFile: '', ethicsFileId: '', verified: !!verified, createdAt: now - joined * DAY });
+    put('users', id, { role: 'researcher', name, program, dept, advisor, ethicsDate: ymd(ethOffset), ethicsFile: '', ethicsFileId: '', verified: !!verified, createdAt: now - joined * DAY });
     contact(id, name, phone, email);
     owners.set(id, { name, program, dept });
     return id;
@@ -71,10 +71,10 @@ async function main() {
   const addParticipant = (email, name, phone, pid, profile, sms, paused, since) => {
     const id = email === 'haeun.lee@hs.ac.kr' ? login(email, name) : `demo-p-${pid.slice(2)}`;
     const tail = phone.replace(/\D/g, '').slice(-4);
-    put('users', id, { seeded: true, role: 'participant', pid, affiliation: profile.status === D.EXTERNAL_STATUS ? 'external' : 'campus', createdAt: since });
+    put('users', id, { role: 'participant', pid, affiliation: profile.status === D.EXTERNAL_STATUS ? 'external' : 'campus', createdAt: since, phoneTail: tail });
     put('pids', pid, { uid: id });
     contact(id, name, phone, email);
-    put('pool', id, { pid, ...profile, sms: !!sms, joined: true, paused: !!paused, since, wantJoin: true, phoneTail: tail });
+    put('pool', id, { pid, ...profile, sms: !!sms, joined: true, paused: !!paused, since, wantJoin: true });
     people.push({ id, pid, profile, tail, paused: !!paused });
     return id;
   };
@@ -117,7 +117,7 @@ async function main() {
     doc.survey = doc.survey.map(({ sample, ...rest }) => rest);
     const slotRows = slots.map((x) => ({ id: randomId('slot'), ...x, booked: 0 }));
     const row = {
-      ...doc, ownerUid: owner, owner: owners.get(owner), status, slotCount: slotRows.length, doneCount: 0, irbFile: '', irbFileId: '',
+      ...doc, ownerUid: owner, owner: owners.get(owner), status, slotCount: slotRows.length, doneCount: 0, paidCount: 0, endTs: D.endTs(doc.end), irbFile: '', irbFileId: '',
       createdAt: now - 30 * DAY, updatedAt: now - 2 * DAY, ...(meta.submittedAt ? { submittedAt: meta.submittedAt } : {}), ...(meta.approvedAt ? { approvedAt: meta.approvedAt } : {}),
     };
     put('studies', id, row);
@@ -198,6 +198,7 @@ async function main() {
   const addEnr = (st, userId, e) => {
     const p = byId.get(userId);
     if (D.DONE.includes(e.status)) st.row.doneCount++;
+    if (e.status === 'paid') st.row.paidCount++;
     // 연구자에게 보이는 참여자 정보는 가명 ID·신분·연령대·전화번호 끝 네 자리뿐이다.
     put('enrollments', `${st.id}__${userId}`, { studyId: st.id, uid: userId, pid: p.pid, ownerUid: st.ownerUid, pstatus: p.profile.status, ageBand: D.ageBand(D.ageOf(p.profile, now)), phoneTail: p.tail, ...e });
   };

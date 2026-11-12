@@ -34,10 +34,10 @@ async function as(email) {
 const allowed = (p, msg) => assert.doesNotReject(p, msg);
 const denied = async (p, msg) => assert.equal(await p.then(() => 'allowed', (e) => e.code), 'permission-denied', msg);
 
-const pool = (pid, o = {}) => ({ pid, birthYear: year - 25, gender: '여성', status: '학외 일반인', dept: '학외', year: '해당 없음', interests: [], times: [], sms: true, joined: true, paused: false, since: 1, wantJoin: true, phoneTail: '1234', ...o });
+const pool = (pid, o = {}) => ({ pid, birthYear: year - 25, gender: '여성', status: '학외 일반인', dept: '학외', year: '해당 없음', interests: [], times: [], sms: true, joined: true, paused: false, since: 1, wantJoin: true, ...o });
 const study = (ownerUid, o = {}) => ({
   ownerUid, owner: { name: '김연구', program: '석사과정', dept: '심리학과' }, status: 'recruiting', title: '연구', summary: '요약', type: 'program', minutes: 60, target: 5, doneCount: 0, slotCount: 1,
-  start: '2026-01-01', end: '2099-01-01', irbUntil: '2099-01-01', irbNo: 'IRB-1', explanation: {}, consent: ['동의'], survey: [], notices: [], templates: { remind3: true },
+  start: '2026-01-01', end: '2099-01-01', endTs: 4070908800000, irbUntil: '2099-01-01', irbNo: 'IRB-1', explanation: {}, consent: ['동의'], survey: [], notices: [], templates: { remind3: true },
   criteria: { ageMin: 19, ageMax: 60, statuses: ['학외 일반인'], genders: [], depts: [] }, reward: { type: '모바일 상품권', amount: 1000 }, location: '상담실', ...o,
 });
 const enr = (sid, uid, pid, ownerUid, o = {}) => ({ studyId: sid, uid, pid, ownerUid, status: 'invited', source: 'self', invitedAt: 1, pstatus: '학외 일반인', ageBand: '20대 중반', phoneTail: '1234', ...o });
@@ -54,8 +54,8 @@ test.before(async () => {
   const set = (path, data) => b.set(admin.doc(path), data);
   set('admins/A', { createdAt: 1 });
   for (const r of ['R', 'R2']) set(`users/${r}`, { role: 'researcher', name: '김연구', program: '석사과정', dept: '심리학과', advisor: '박', verified: r === 'R', createdAt: 1 });
-  for (const [u, pid] of [['P', 'P-1111'], ['P2', 'P-2222']]) {
-    set(`users/${u}`, { role: 'participant', pid, affiliation: 'external', createdAt: 1 });
+  for (const [u, pid] of [['P', 'P-1111'], ['P2', 'P-2222'], ['P3', 'P-3030']]) {
+    set(`users/${u}`, { role: 'participant', pid, affiliation: 'external', createdAt: 1, phoneTail: '1234' });
     set(`pids/${pid}`, { uid: u });
     set(`users/${u}/private/contact`, { name: u === 'P' ? '박참여' : '이참여', phone: '010-1111-1234', email: `${u.toLowerCase()}@example.com` });
     set(`pool/${u}`, pool(pid));
@@ -64,6 +64,7 @@ test.before(async () => {
   set('studies/S1/slots/a', { at: Date.now() + 864e5, cap: 1, booked: 0 });
   set('studies/S2', study('R2', { criteria: { ageMin: 40, ageMax: 60, statuses: ['학부생'], genders: [], depts: [] } }));
   set('studies/DRAFT', study('R', { status: 'draft' }));
+  set('studies/OLD', study('R', { endTs: 1 })); // 모집 기간이 지난 연구
   set('studies/REVIEW', study('R', { status: 'review' }));
   set('enrollments/S2__P', enr('S2', 'P', 'P-1111', 'R2', { status: 'completed', completedAt: 2, responses: { q1: 3 } }));
   set('enrollments/S2__P/private/consent', { signature: '박참여', items: ['동의'], title: '연구', irbNo: 'IRB-1', at: 1 });
@@ -82,11 +83,12 @@ test('로그인하지 않으면 통계 문서만 읽을 수 있다', async () =>
   await denied(getDoc(doc(db, 'pool/P')));
 });
 
-test('연구자: 대기풀·연락처·서명·남의 연구는 읽을 수 없다', async () => {
+test('연구자: 확인된 연구자만 대기풀(이름·연락처 없음)을 읽고, 연락처·서명·남의 연구는 읽을 수 없다', async () => {
   const db = await as('r@hs.ac.kr');
   await allowed(getDocs(query(collection(db, 'studies'), where('ownerUid', '==', 'R'))));
-  await denied(getDocs(collection(db, 'pool')), '대기풀 목록');
-  await denied(getDoc(doc(db, 'pool/P')), '대기풀 한 건');
+  const rows = (await getDocs(collection(db, 'pool'))).docs.map((d) => d.data());
+  assert.ok(rows.length >= 3 && rows.every((r) => !('name' in r) && !('phone' in r) && !('email' in r) && !('phoneTail' in r)), '대기풀 문서에는 이름·연락처가 없다');
+  await denied(getDocs(collection(await as('r2@hs.ac.kr'), 'pool')), '확인 전 연구자의 대기풀 열람');
   await denied(getDoc(doc(db, 'users/P')), '참여자 계정 문서');
   await denied(getDoc(doc(db, 'users/P/private/contact')), '이름·연락처');
   await denied(getDocs(query(collection(db, 'enrollments'), where('studyId', '==', 'S2'))), '남의 연구 참여 기록');
@@ -98,10 +100,13 @@ test('연구자: 스스로 승인하거나 집계·확인 표시를 바꿀 수 �
   const db = await as('r@hs.ac.kr');
   await denied(updateDoc(doc(db, 'studies/DRAFT'), { status: 'recruiting' }), '직접 공개');
   await denied(updateDoc(doc(db, 'studies/REVIEW'), { title: '몰래 수정' }), '심사 중 수정');
-  await denied(updateDoc(doc(db, 'studies/S1'), { doneCount: 99 }), '완료 인원 조작');
+  await denied(updateDoc(doc(db, 'studies/S1'), { approvedAt: 1 }), '승인 시각 조작');
+  await denied(updateDoc(doc(db, 'studies/S1'), { ownerUid: 'R2' }), '소유자 바꾸기');
   await denied(updateDoc(doc(db, 'studies/S1'), { title: '공개 후 제목 변경' }), '공개 후 내용 변경');
   await allowed(updateDoc(doc(db, 'studies/S1'), { 'templates.remind3': false, updatedAt: 2 }), '리마인더 설정');
-  await denied(setDoc(doc(db, 'messages/x'), { toUid: 'P', body: 'spam', at: 1, read: false }), '알림함에 직접 쓰기');
+  const m = (toUid, studyId, o = {}) => ({ toUid, studyId, ownerUid: 'R', kind: 'reminder', channel: 'app', subject: 's', body: 'b', at: 1, read: false, ...o });
+  await denied(setDoc(doc(db, 'messages/x1'), m('P3', 'S1')), '자기 연구와 무관한 사람에게 알림');
+  await denied(setDoc(doc(db, 'messages/x2'), m('P', 'S2')), '남의 연구 이름으로 알림');
   await denied(setDoc(doc(db, 'admins/R'), { x: 1 }), '관리자 지정');
   const r2 = await as('r2@hs.ac.kr');
   await denied(updateDoc(doc(r2, 'users/R2'), { verified: true }), '스스로 연구자 확인');
@@ -124,6 +129,29 @@ test('참여자: 조건에 맞는 모집 중 연구에만 신청할 수 있고, 
   await denied(setDoc(doc(p2, 'enrollments/S2__P2'), enr('S2', 'P2', 'P-2222', 'R2')), '조건(나이·신분)에 안 맞는 연구');
   await denied(setDoc(doc(p2, 'enrollments/S1__P2'), enr('S1', 'P2', 'P-1111', 'R')), '남의 가명 ID로 신청');
   await denied(setDoc(doc(p2, 'enrollments/DRAFT__P2'), enr('DRAFT', 'P2', 'P-2222', 'R')), '모집 전 연구에 신청');
+  await denied(setDoc(doc(p2, 'enrollments/OLD__P2'), enr('OLD', 'P2', 'P-2222', 'R')), '모집 기간이 지난 연구에 신청');
+  await allowed(setDoc(doc(db, 'messages/self1'), { toUid: 'P', studyId: 'S1', ownerUid: 'R', kind: 'consent', channel: 'app', subject: 's', body: 'b', at: 1, read: false }), '내 알림함에 기록');
+  await denied(setDoc(doc(db, 'messages/other1'), { toUid: 'P2', studyId: 'S1', ownerUid: 'R', kind: 'consent', channel: 'app', subject: 's', body: 'b', at: 1, read: false }), '남의 알림함에 쓰기');
+});
+
+test('초대: 담당 연구자가 대기풀에서 안내를 받는, 조건에 맞는 사람에게만 만들 수 있다', async () => {
+  const r = await as('r@hs.ac.kr');
+  const inv = (sid, uid, pid, o = {}) => ({ studyId: sid, uid, pid, ownerUid: 'R', status: 'invited', source: 'invite', invitedAt: 1, pstatus: '학외 일반인', ageBand: '20대 중반', ...o });
+  const b = writeBatch(r);
+  b.set(doc(r, 'enrollments/S1__P3'), inv('S1', 'P3', 'P-3030'));
+  b.set(doc(r, 'messages/inv1'), { toUid: 'P3', studyId: 'S1', ownerUid: 'R', kind: 'invite', channel: 'app', subject: 's', body: 'b', at: 1, read: false });
+  b.set(doc(r, 'poolNotices/P3'), { ats: [1] });
+  await allowed(b.commit(), '초대 + 알림 + 안내 횟수 기록');
+  await denied(setDoc(doc(r, 'enrollments/DRAFT__P3'), inv('DRAFT', 'P3', 'P-3030')), '모집 전 연구로 초대');
+  await denied(setDoc(doc(r, 'enrollments/S1__P3b'), inv('S1', 'P3', 'P-3030', { status: 'consented' })), '동의한 것처럼 기록 만들기');
+  await admin.doc('pool/P3').update({ paused: true });
+  await admin.doc('enrollments/S1__P3').delete();
+  await denied(setDoc(doc(r, 'enrollments/S1__P3'), inv('S1', 'P3', 'P-3030')), '안내를 멈춘 사람 초대');
+  await admin.doc('pool/P3').update({ paused: false, status: '학부생' });
+  await denied(setDoc(doc(r, 'enrollments/S1__P3'), inv('S1', 'P3', 'P-3030', { pstatus: '학부생' })), '조건에 안 맞는 사람 초대');
+  await admin.doc('pool/P3').update({ status: '학외 일반인' });
+  const r2 = await as('r2@hs.ac.kr');
+  await denied(setDoc(doc(r2, 'enrollments/S1__P3'), { ...inv('S1', 'P3', 'P-3030'), ownerUid: 'R2' }), '남의 연구로 초대');
 });
 
 test('참여자: 동의에는 서명이 필요하고, 예약은 정원을 넘지 못한다', async () => {
@@ -172,7 +200,8 @@ test('보상: 연구자가 지급 처리하면 발송 요청이 생기고, 번�
   await allowed(getDoc(doc(a, 'users/P/private/contact')), '관리자의 연락처 열람');
   await allowed(updateDoc(doc(a, 'rewards/S2__P'), { sentAt: 4 }), '관리자의 발송 완료 표시');
   await denied(getDocs(query(collection(a, 'enrollments'), where('studyId', '==', 'S2'))), '관리자의 설문 응답 열람');
-  await denied(getDocs(collection(a, 'pool')), '관리자의 대기풀 열람');
+  await allowed(updateDoc(doc(a, 'enrollments/S2__P'), { rewardSentAt: 4, rewardQueue: 'sent' }), '관리자의 발송 완료 반영');
+  await denied(updateDoc(doc(a, 'enrollments/S2__P'), { status: 'completed' }), '관리자의 참여 상태 변경');
 });
 
 test('관리자: 심사 중인 연구만 승인·보완 요청하고, 연구자 확인을 한다', async () => {
@@ -180,12 +209,12 @@ test('관리자: 심사 중인 연구만 승인·보완 요청하고, 연구자 
   await allowed(updateDoc(doc(a, 'users/R2'), { verified: true }), '연구자 확인');
   await denied(updateDoc(doc(a, 'studies/DRAFT'), { status: 'recruiting' }), '제출하지 않은 연구 승인');
   await denied(updateDoc(doc(a, 'studies/REVIEW'), { status: 'recruiting', title: '바꿔치기' }), '승인하며 내용 변경');
-  await allowed(updateDoc(doc(a, 'studies/REVIEW'), { status: 'recruiting', approvedAt: 5, updatedAt: 5, notifyPool: true }), '승인');
+  await allowed(updateDoc(doc(a, 'studies/REVIEW'), { status: 'recruiting', approvedAt: 5, updatedAt: 5 }), '승인');
 });
 
 test('가입: 이메일 인증 전에는 대기풀 안내 대상이 될 수 없고, 교내 신분은 학교 메일이 필요하다', async () => {
   const db = await as('new@example.com');
-  const mkBatch = (o) => { const b = writeBatch(db); b.set(doc(db, 'pids/P-3333'), { uid: 'NEW' }); b.set(doc(db, 'users/NEW'), { role: 'participant', pid: 'P-3333', affiliation: 'external', createdAt: 1 }); b.set(doc(db, 'users/NEW/private/contact'), { name: '새사람', phone: '010-2222-3333', email: 'new@example.com' }); b.set(doc(db, 'pool/NEW'), pool('P-3333', { joined: false, phoneTail: '3333', ...o })); return b; };
+  const mkBatch = (o) => { const b = writeBatch(db); b.set(doc(db, 'pids/P-3333'), { uid: 'NEW' }); b.set(doc(db, 'users/NEW'), { role: 'participant', pid: 'P-3333', affiliation: 'external', createdAt: 1, phoneTail: '3333' }); b.set(doc(db, 'users/NEW/private/contact'), { name: '새사람', phone: '010-2222-3333', email: 'new@example.com' }); b.set(doc(db, 'pool/NEW'), pool('P-3333', { joined: false, ...o })); return b; };
   await denied(mkBatch({ joined: true }).commit(), '인증 전 대기풀 등록');
   await denied(mkBatch({ status: '학부생', dept: '경영학과' }).commit(), '개인 메일로 교내 신분');
   await denied(mkBatch({ birthYear: year - 17 }).commit(), '만 19세 미만');

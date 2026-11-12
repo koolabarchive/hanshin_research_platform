@@ -9,9 +9,6 @@ export const firebaseConfig = {
   appId: "1:84245262808:web:6eba01e622656f785202ad",
 };
 
-// Functions와 Firestore 리전(서울).
-export const REGION = "asia-northeast3";
-
 // 내 컴퓨터(localhost)에서 열면 실제 프로젝트 대신 에뮬레이터에 붙는다. 시연 계정 버튼도 이때만 보인다.
 export const EMULATOR = ["localhost", "127.0.0.1"].includes(location.hostname);
 export const EMULATOR_PROJECT = "demo-hsrp";

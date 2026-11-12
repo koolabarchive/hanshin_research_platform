@@ -3,10 +3,12 @@ rules_version = '2';
 // 한신 리서치풀 보안 규칙.
 // 브라우저가 Firestore를 직접 읽고 쓰므로, "누가 무엇을 볼 수 있는가"는 전부 이 파일이 결정한다.
 //
-//  - 참여자의 이름·연락처(users/{uid}/private)와 매칭 정보(pool/{uid})는 본인만 읽는다.
-//    연구자는 읽을 수 없고, 대기풀 초대는 Functions가 대신 한다.
+//  서버(Functions) 없이 동작한다. 그래서 대기풀 집계와 초대, 알림함 작성도 브라우저가 이 규칙 아래에서 한다.
+//  - 참여자의 이름·연락처(users/{uid}/private)는 본인만 읽는다(관리자는 상품권 발송용으로 한 건씩).
+//  - 매칭 정보(pool/{uid})에는 이름·연락처가 없다. 본인과, 연구윤리지원팀이 확인한 연구자·관리자가 읽는다.
+//    (조건에 맞는 인원을 세고 초대하려면 읽어야 한다.)
 //  - 연구자는 자기 연구의 참여 기록만 읽는다. 거기에는 가명 ID·신분·연령대·전화번호 끝 4자리만 있다.
-//  - 알림함(messages)·발송 기록(sendLogs)은 Functions만 쓴다. 메일·문자도 Functions가 보낸다.
+//  - 알림함(messages)은 본인, 그 연구의 담당 연구자, 관리자만 쓸 수 있다. 이메일·문자는 보내지 않는다.
 //  - 관리자는 admins/{uid} 문서가 있는 계정이다. 이 문서는 콘솔에서만 만든다.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -15,6 +17,8 @@ service cloud.firestore {
     function verified() { return signedIn() && request.auth.token.email_verified == true; }
     function campusEmail() { return request.auth.token.email.matches('.*@hs[.]ac[.]kr$'); }
     function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(uid())); }
+    // 연구윤리지원팀이 확인한 연구자(이메일 인증 포함).
+    function researcherOk() { return verified() && userDoc(uid()).role == 'researcher' && userDoc(uid()).verified == true; }
     function userDoc(u) { return get(/databases/$(database)/documents/users/$(u)).data; }
     function poolDoc(u) { return get(/databases/$(database)/documents/pool/$(u)).data; }
     function study(sid) { return get(/databases/$(database)/documents/studies/$(sid)).data; }
@@ -35,7 +39,8 @@ service cloud.firestore {
       allow list: if isAdmin() && resource.data.role == 'researcher';
       allow create: if signedIn() && u == uid() && (
         ( fresh().role == 'participant'
-          && fresh().keys().hasOnly(['role', 'pid', 'affiliation', 'createdAt'])
+          && fresh().keys().hasOnly(['role', 'pid', 'affiliation', 'createdAt', 'phoneTail'])
+          && fresh().phoneTail.matches('^[0-9]{4}$')
           && fresh().pid.matches('^P-[0-9]{4,5}$')
           // 가명 ID는 pids/{pid}에 함께 등록되어야 한다(중복 방지).
           && getAfter(/databases/$(database)/documents/pids/$(fresh().pid)).data.uid == uid()
@@ -52,6 +57,8 @@ service cloud.firestore {
       );
       allow update: if signedIn() && (
         (u == uid() && resource.data.role == 'researcher' && changed().hasOnly(['ethicsFile', 'ethicsFileId']))
+        // 참여자 탈퇴 표시
+        || (u == uid() && resource.data.role == 'participant' && changed().hasOnly(['deleted', 'deletedAt']) && fresh().deleted == true)
         || (isAdmin() && resource.data.role == 'researcher' && changed().hasOnly(['verified']))
       );
       allow delete: if false;
@@ -65,7 +72,7 @@ service cloud.firestore {
           && fresh().name is string && fresh().name.size() >= 2 && fresh().name.size() <= 30
           && fresh().phone is string && fresh().phone.matches('^01[0-9]-?[0-9]{3,4}-?[0-9]{4}$')
           && fresh().email == request.auth.token.email;
-        allow delete: if false;
+        allow delete: if signedIn() && u == uid();   // 탈퇴
       }
     }
 
@@ -76,7 +83,7 @@ service cloud.firestore {
 
     // ── 대기풀(매칭 정보) ──
     function validPool(d) {
-      return d.keys().hasOnly(['pid', 'birthYear', 'gender', 'status', 'dept', 'year', 'interests', 'times', 'sms', 'joined', 'paused', 'since', 'wantJoin', 'phoneTail'])
+      return d.keys().hasOnly(['pid', 'birthYear', 'gender', 'status', 'dept', 'year', 'interests', 'times', 'sms', 'joined', 'paused', 'since', 'wantJoin'])
         && d.pid == getAfter(/databases/$(database)/documents/users/$(uid())).data.pid
         && d.birthYear is int && request.time.year() - d.birthYear >= 19 && d.birthYear >= 1920
         && d.gender in ['여성', '남성']
@@ -86,17 +93,23 @@ service cloud.firestore {
         && d.dept is string && d.dept.size() <= 40 && d.year is string && d.year.size() <= 10
         && d.interests is list && d.interests.size() <= 10 && d.times is list && d.times.size() <= 10
         && d.sms is bool && d.joined is bool && d.paused is bool && d.wantJoin is bool
-        && d.phoneTail is string && d.phoneTail.matches('^[0-9]{4}$')
         // 이메일 인증을 마쳐야 안내 대상이 된다.
         && (d.joined == false || verified());
     }
     match /pool/{u} {
-      allow get: if signedIn() && u == uid();
-      allow list: if false;   // 연구자는 대기풀을 읽을 수 없다. 인원수와 초대는 Functions가 처리한다.
+      // 이름·연락처가 없는 매칭 정보. 확인된 연구자는 조건에 맞는 인원을 세고 초대하기 위해 읽는다.
+      allow get: if signedIn() && (u == uid() || researcherOk() || isAdmin());
+      allow list: if researcherOk() || isAdmin();
       allow create: if signedIn() && u == uid() && getAfter(/databases/$(database)/documents/users/$(u)).data.role == 'participant' && validPool(fresh());
       allow update: if signedIn() && u == uid() && validPool(fresh())
         && changed().hasOnly(['interests', 'times', 'sms', 'joined', 'paused', 'since', 'wantJoin']);
-      allow delete: if false;
+      allow delete: if signedIn() && u == uid();   // 탈퇴
+    }
+
+    // 최근에 모집 안내를 받은 시각들. 한 사람에게 안내가 몰리지 않게(주 3회) 화면이 참고한다.
+    match /poolNotices/{u} {
+      allow read: if researcherOk() || isAdmin();
+      allow write: if (researcherOk() || isAdmin()) && fresh().keys().hasOnly(['ats']) && fresh().ats is list && fresh().ats.size() <= 20;
     }
 
     // ── 연구 ──
@@ -110,7 +123,7 @@ service cloud.firestore {
         && d.criteria is map && d.criteria.ageMin is int && d.criteria.ageMin >= 19 && d.criteria.ageMax is int
         && d.criteria.statuses is list && d.criteria.genders is list && d.criteria.depts is list
         && d.reward is map && d.reward.amount is int && d.reward.amount >= 0
-        && d.templates is map && d.notices is list && d.slotCount is int && d.slotCount >= 0
+        && d.templates is map && d.notices is list && d.slotCount is int && d.slotCount >= 0 && d.endTs is int
         && d.owner.name == userDoc(uid()).name && d.owner.program == userDoc(uid()).program;
     }
     function canReadStudy(d) {
@@ -124,18 +137,18 @@ service cloud.firestore {
       allow update: if signedIn() && (
         // 연구자: 작성 중·보완 요청 상태에서만 내용을 고치고, 확인된 연구자만 심사에 제출한다.
         ( resource.data.ownerUid == uid()
-          && !changed().hasAny(['ownerUid', 'doneCount', 'approvedAt', 'notifyPool'])
+          && !changed().hasAny(['ownerUid', 'approvedAt'])
           && (
             ( resource.data.status in ['draft', 'rejected'] && fresh().status in ['draft', 'review'] && validStudy(fresh())
               && (fresh().status == 'draft' || (userDoc(uid()).verified == true && verified())) )
             || ( resource.data.status == 'recruiting' && fresh().status == 'closed' && changed().hasOnly(['status', 'updatedAt']) )
-            // 공개된 연구는 공지와 자동 리마인더 설정만 바꿀 수 있다.
-            || ( resource.data.status in ['recruiting', 'closed'] && changed().hasOnly(['notices', 'templates', 'updatedAt'])
-              && fresh().notices is list && fresh().templates is map )
+            // 공개된 연구는 공지·리마인더 설정과 완료·지급 인원 집계만 바꿀 수 있다.
+            || ( resource.data.status in ['recruiting', 'closed'] && changed().hasOnly(['notices', 'templates', 'updatedAt', 'doneCount', 'paidCount'])
+              && fresh().notices is list && fresh().templates is map && fresh().doneCount is int )
           ) )
         // 연구윤리지원팀: 심사 중인 연구를 승인하거나 보완 요청으로 돌려보낸다.
         || ( isAdmin() && resource.data.status == 'review' && fresh().status in ['recruiting', 'rejected']
-          && changed().hasOnly(['status', 'reviewComment', 'approvedAt', 'updatedAt', 'start', 'notifyPool']) )
+          && changed().hasOnly(['status', 'reviewComment', 'approvedAt', 'updatedAt', 'start']) )
       );
       allow delete: if false;
 
@@ -170,21 +183,33 @@ service cloud.firestore {
     match /enrollments/{eid} {
       allow read: if signedIn() && (resource.data.uid == uid() || resource.data.ownerUid == uid());
       // 직접 신청: 모집 중이고, 조건에 맞고, 정원이 남아 있을 때만.
-      allow create: if verified()
+      // 초대: 담당 연구자가 대기풀에서 안내를 받고 있고 조건에 맞는 사람에게만 만들 수 있다.
+      allow create: if ( researcherOk()
+          && eid == fresh().studyId + '__' + fresh().uid && fresh().ownerUid == uid()
+          && fresh().keys().hasOnly(['studyId', 'uid', 'pid', 'ownerUid', 'status', 'source', 'invitedAt', 'pstatus', 'ageBand'])
+          && fresh().status == 'invited' && fresh().source == 'invite'
+          && study(fresh().studyId).ownerUid == uid() && study(fresh().studyId).status == 'recruiting'
+          && request.time.toMillis() <= study(fresh().studyId).endTs
+          && poolDoc(fresh().uid).joined == true && poolDoc(fresh().uid).paused == false
+          && fresh().pid == poolDoc(fresh().uid).pid && fresh().pstatus == poolDoc(fresh().uid).status
+          && fits(study(fresh().studyId).criteria, poolDoc(fresh().uid)) )
+        || verified()
         && eid == fresh().studyId + '__' + uid() && fresh().uid == uid()
         && fresh().keys().hasOnly(['studyId', 'uid', 'pid', 'ownerUid', 'status', 'source', 'invitedAt', 'pstatus', 'ageBand', 'phoneTail'])
         && fresh().status == 'invited' && fresh().source == 'self'
         && study(fresh().studyId).status == 'recruiting'
+        && request.time.toMillis() <= study(fresh().studyId).endTs
         && fresh().ownerUid == study(fresh().studyId).ownerUid
         && fresh().pid == userDoc(uid()).pid
-        && fresh().pstatus == poolDoc(uid()).status && fresh().phoneTail == poolDoc(uid()).phoneTail
+        && fresh().pstatus == poolDoc(uid()).status && fresh().phoneTail == userDoc(uid()).phoneTail
         && fits(study(fresh().studyId).criteria, poolDoc(uid()))
         && study(fresh().studyId).doneCount < study(fresh().studyId).target;
       allow update: if signedIn() && (
         ( resource.data.uid == uid() && (
           // 전자동의: 서명과 동의서 사본(private/consent)이 함께 저장되어야 한다.
           ( resource.data.status == 'invited' && fresh().status == 'consented'
-            && changed().hasOnly(['status', 'consentAt', 'consentVersion'])
+            && changed().hasOnly(['status', 'consentAt', 'consentVersion', 'phoneTail'])
+            && (!('phoneTail' in fresh()) || fresh().phoneTail == userDoc(uid()).phoneTail)
             && study(resource.data.studyId).status == 'recruiting'
             && existsAfter(/databases/$(database)/documents/enrollments/$(eid)/private/consent) )
           // 일정 예약: 같은 트랜잭션에서 그 시간의 예약 수가 1 늘어야 한다(정원은 slots 규칙이 확인).
@@ -211,6 +236,8 @@ service cloud.firestore {
           || ( resource.data.status == 'completed' && fresh().status == 'paid' && changed().hasOnly(['status', 'paidAt', 'rewardQueue'])
             && ( !('rewardQueue' in fresh()) || (fresh().rewardQueue == 'pending' && existsAfter(/databases/$(database)/documents/rewards/$(eid))) ) )
         ) )
+        // 연구윤리지원팀: 상품권을 보낸 뒤 발송 완료 표시.
+        || ( isAdmin() && resource.data.status == 'paid' && changed().hasOnly(['rewardSentAt', 'rewardQueue']) && fresh().rewardQueue == 'sent' )
       );
       allow delete: if false;
 
@@ -240,15 +267,27 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ── 알림함·발송 기록 ──  Functions만 쓴다.
+    // ── 알림함 ──  플랫폼 안에서만 전달된다(이메일·문자 발송 없음).
     match /messages/{mid} {
       allow read: if signedIn() && resource.data.toUid == uid();
       allow update: if signedIn() && resource.data.toUid == uid() && changed().hasOnly(['read']) && fresh().read == true;
-      allow create, delete: if false;
+      allow create: if signedIn()
+        && fresh().keys().hasOnly(['toUid', 'studyId', 'ownerUid', 'kind', 'channel', 'subject', 'body', 'at', 'read'])
+        && fresh().channel == 'app' && fresh().read == false
+        && fresh().body is string && fresh().body.size() <= 3000 && fresh().subject is string && fresh().subject.size() <= 200
+        && (
+          fresh().toUid == uid()            // 내 알림함에 남기는 기록(동의서 사본, 일정 확정 등)
+          || isAdmin()                      // 새 연구 안내, 상품권 발송 안내
+          // 담당 연구자 → 자기 연구에 초대했거나 참여 중인 사람에게만
+          || ( fresh().ownerUid == uid() && study(fresh().studyId).ownerUid == uid()
+            && existsAfter(enrPath(fresh().studyId, fresh().toUid)) )
+        );
+      allow delete: if signedIn() && resource.data.toUid == uid();   // 탈퇴
     }
     match /sendLogs/{id} {
-      allow read: if signedIn() && resource.data.ownerUid == uid();
-      allow write: if false;
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && ( isAdmin() || (fresh().ownerUid == uid() && study(fresh().studyId).ownerUid == uid()) );
+      allow update, delete: if false;
     }
 
     // ── 문의 ──  참여자 → 연구자. 연구자에게는 가명 ID로 보인다.
@@ -263,10 +302,10 @@ service cloud.firestore {
         && fresh().reported == false;
       allow update: if signedIn() && resource.data.ownerUid == uid() && changed().hasOnly(['reply', 'repliedAt', 'reported'])
         && (!('reply' in fresh()) || (fresh().reply is string && fresh().reply.size() <= 2000));
-      allow delete: if false;
+      allow delete: if signedIn() && resource.data.uid == uid();   // 탈퇴
     }
 
-    // ── 처리 기록 ──  대부분 Functions가 남긴다. 화면에서 남기는 것(자료 내려받기 등)은 자기 이름으로만.
+    // ── 처리 기록 ──  화면이 자기 이름으로만 남길 수 있고, 고치거나 지울 수 없다.
     match /audit/{id} {
       allow read: if signedIn() && (isAdmin() || resource.data.actorUid == uid() || (resource.data.pid != null && resource.data.pid == userDoc(uid()).pid));
       allow create: if signedIn() && fresh().actorUid == uid()
@@ -294,7 +333,7 @@ service cloud.firestore {
     // ── 첫 화면 통계 ──  누구나 읽는다. 개인 정보는 없다.
     match /stats/{docId} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAdmin();   // 관리자 화면이 열릴 때 갱신한다.
     }
   }
 }

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const D = require('../functions/domain');
+const D = require('../web/domain');
 
 const NOW = new Date('2026-06-15T03:00:00Z').getTime();
 const study = (criteria = {}) => ({ criteria: { ageMin: 19, ageMax: 39, statuses: [], genders: [], depts: [], exclude: '', ...criteria } });
