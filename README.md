@@ -111,11 +111,10 @@ test/                   규칙 테스트, 가입부터 보상까지의 API 테�
 
 1. Firebase 프로젝트를 만들고 Firestore 데이터베이스를 **서울(asia-northeast3)** 리전, 운영 모드로 만듭니다. 리전은 나중에 바꿀 수 없습니다.
 2. Functions를 쓰려면 Blaze(종량제) 요금제가 필요합니다. 무료(Spark) 요금제로는 서버 코드를 Firebase에 올릴 수 없고, 이 경우 서버를 학교 서버 등 다른 곳에서 돌려야 합니다(아래 "일반 서버에서 돌리기").
-3. 프로젝트 연결, 암호화 키 등록, 배포:
+3. 암호화 키 등록과 배포 (프로젝트는 `.firebaserc`에 `koolab-33917`로 지정되어 있습니다):
 
    ```bash
    npx firebase login
-   npx firebase use --add
    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    npx firebase functions:secrets:set DATA_KEY
    npx firebase deploy
