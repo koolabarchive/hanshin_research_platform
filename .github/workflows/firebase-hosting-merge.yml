@@ -1,0 +1,25 @@
+# main 브랜치에 올라오면 화면을 빌드해 Firebase Hosting(실제 사이트)에 배포한다.
+# 배포 권한(FIREBASE_SERVICE_ACCOUNT_HSRESEARCH_D0C1A)은 맥북에서 `firebase init hosting:github`를
+# 한 번 실행하면 이 저장소의 비밀 값으로 등록된다.
+# 보안 규칙(firestore.rules)은 여기서 배포하지 않는다. 규칙을 바꾸면 직접 `firebase deploy --only firestore`.
+name: Deploy to Firebase Hosting on merge
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts && npm run build
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_HSRESEARCH_D0C1A }}
+          channelId: live
+          projectId: hsresearch-d0c1a
