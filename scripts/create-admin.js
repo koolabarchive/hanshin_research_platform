@@ -1,19 +1,23 @@
-// 운영용 첫 관리자(연구윤리지원팀) 계정 만들기:
+// 첫 관리자(연구윤리지원팀) 계정 만들기:
 //   ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run create-admin
+// 실제 프로젝트에 만들려면 GOOGLE_APPLICATION_CREDENTIALS(서비스 계정 키)와 DATA_KEY 가 설정되어 있어야 한다.
 try { process.loadEnvFile(require('node:path').join(__dirname, '..', '.env')); } catch {}
-const { get, run } = require('../src/db');
+const { col, find } = require('../src/db');
 const { hashPassword, encryptJSON } = require('../src/security');
 
-const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-const password = process.env.ADMIN_PASSWORD || '';
-if (!email || password.length < 12) {
-  console.error('ADMIN_EMAIL 과 12자 이상의 ADMIN_PASSWORD 환경변수를 지정해 주세요.');
-  process.exit(1);
+async function main() {
+  const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (!email || password.length < 12) throw new Error('ADMIN_EMAIL 과 12자 이상의 ADMIN_PASSWORD 환경변수를 지정해 주세요.');
+  if ((await find(col('users').where('email', '==', email).limit(1))).length) throw new Error('이미 있는 이메일입니다.');
+  await col('users').doc().set({
+    role: 'admin', email, password_hash: hashPassword(password), pii_enc: encryptJSON({ name: process.env.ADMIN_NAME || '연구윤리지원팀', phone: '' }),
+    status: 'active', synthetic: false, verified: true, joined_at: Date.now(),
+  });
+  console.log(`관리자 계정을 만들었습니다: ${email}`);
 }
-if (get('SELECT 1 FROM users WHERE email = ?', email)) {
-  console.error('이미 있는 이메일입니다.');
+
+main().then(() => process.exit(0)).catch((err) => {
+  console.error(err.message);
   process.exit(1);
-}
-run(`INSERT INTO users (role, email, password_hash, pii_enc, verified, joined_at) VALUES ('admin', ?, ?, ?, 1, ?)`,
-  email, hashPassword(password), encryptJSON({ name: process.env.ADMIN_NAME || '연구윤리지원팀', phone: '' }), Date.now());
-console.log(`관리자 계정을 만들었습니다: ${email}`);
+});

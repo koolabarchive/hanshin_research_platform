@@ -1,0 +1,10 @@
+rules_version = '2';
+// 브라우저에서 Firestore를 직접 읽거나 쓸 수 없다.
+// 모든 접근은 서버(Admin SDK)를 거치고, 서버가 역할에 따라 내보낼 정보를 거른다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

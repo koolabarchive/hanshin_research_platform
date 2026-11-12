@@ -1,7 +1,7 @@
-const { run } = require('./db');
+const { col } = require('./db');
 
 // 이메일은 SMTP, 문자는 학교 문자 발송 계정(HTTP API)을 연결하면 실제로 나간다.
-// 연결하지 않으면 outbox 테이블에만 쌓인다(시연·개발용).
+// 연결하지 않으면 outbox 컬렉션에만 쌓인다(시연·개발용).
 let transport = null;
 
 function getTransport() {
@@ -20,18 +20,21 @@ function getTransport() {
 const mailConfigured = () => !!process.env.SMTP_HOST;
 const smsConfigured = () => !!process.env.SMS_API_URL;
 
-function sendMail({ to, subject, text }) {
-  const row = run('INSERT INTO outbox (channel, recipient, subject, body, created_at) VALUES (?,?,?,?,?)', 'email', to, subject, text, Date.now());
+// w: 쓰기를 모아 보내는 writer(store.writer()). 발송 이력을 outbox에 남긴다.
+function sendMail(w, { to, subject, text }) {
+  const ref = col('outbox').doc();
   const t = getTransport();
+  w.set(ref, { channel: 'email', recipient: to, subject, body: text, delivered: false, created_at: Date.now() });
   if (!t) return;
   t.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, to, subject, text })
-    .then(() => run('UPDATE outbox SET delivered = 1 WHERE id = ?', row.lastInsertRowid))
+    .then(() => ref.set({ delivered: true }, { merge: true }))
     .catch((err) => console.error(`[메일 발송 실패] ${err.message}`));
 }
 
 // 문자 발송 업체마다 요청 형식이 다르다. 계약한 업체의 형식에 맞게 이 함수의 요청 본문만 고치면 된다.
-function sendSms({ to, text }) {
-  const row = run('INSERT INTO outbox (channel, recipient, subject, body, created_at) VALUES (?,?,?,?,?)', 'sms', to, '', text, Date.now());
+function sendSms(w, { to, text }) {
+  const ref = col('outbox').doc();
+  w.set(ref, { channel: 'sms', recipient: to, subject: '', body: text, delivered: false, created_at: Date.now() });
   if (!smsConfigured()) return;
   fetch(process.env.SMS_API_URL, {
     method: 'POST',
@@ -40,7 +43,7 @@ function sendSms({ to, text }) {
   })
     .then((res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      run('UPDATE outbox SET delivered = 1 WHERE id = ?', row.lastInsertRowid);
+      return ref.set({ delivered: true }, { merge: true });
     })
     .catch((err) => console.error(`[문자 발송 실패] ${err.message}`));
 }

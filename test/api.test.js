@@ -1,14 +1,15 @@
-// 서버를 실제로 띄워 가입부터 참여까지 한 바퀴 돌리며, "누가 무엇을 볼 수 있는가"를 확인한다.
-process.env.DB_FILE = ':memory:';
+// 서버를 실제로 띄워(저장소는 Firestore 에뮬레이터) 가입부터 참여까지 한 바퀴 돌리며, "누가 무엇을 볼 수 있는가"를 확인한다.
+// Firestore 에뮬레이터가 필요하다: npm test 가 에뮬레이터를 띄운 뒤 이 파일을 실행한다.
 process.env.NODE_ENV = 'test';
-process.env.UPLOAD_DIR = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'hsrp-'));
 process.env.DATA_KEY = require('node:crypto').randomBytes(32).toString('base64');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const app = require('../src/server');
-const { get, run } = require('../src/db');
+const { db, col, find, getDoc } = require('../src/db');
 const { hashPassword, encryptJSON } = require('../src/security');
+
+const one = async (query) => (await find(query))[0];
 
 const PDF = Buffer.from('%PDF-1.4\ntest').toString('base64');
 let base;
@@ -42,11 +43,16 @@ const year = new Date().getFullYear();
 const participantFields = (email, o = {}) => ({ role: 'participant', email, by: year - 25, gender: '여성', status: '학외 일반인', ...o });
 
 test.before(async () => {
+  assert.ok(process.env.FIRESTORE_EMULATOR_HOST, '에뮬레이터 없이 실행하면 실제 프로젝트의 데이터를 지우게 된다. npm test 로 실행할 것.');
+  await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/emulator/v1/projects/${db.projectId}/databases/(default)/documents`, { method: 'DELETE' });
   await new Promise((resolve) => { server = app.listen(0, resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
-  run(`INSERT INTO users (role, email, password_hash, pii_enc, verified, joined_at) VALUES ('admin', 'admin@hs.ac.kr', ?, ?, 1, ?)`, hashPassword('admin-password-1'), encryptJSON({ name: '연구윤리지원팀', phone: '' }), Date.now());
+  await col('users').doc().set({ role: 'admin', email: 'admin@hs.ac.kr', password_hash: hashPassword('admin-password-1'), pii_enc: encryptJSON({ name: '연구윤리지원팀', phone: '' }), status: 'active', synthetic: false, verified: true, joined_at: Date.now() });
 });
-test.after(() => server.close());
+test.after(async () => {
+  server.close();
+  await db.terminate();
+});
 
 test('가입부터 참여까지: 권한과 개인정보 노출 범위', async (t) => {
   const admin = new Client(); const researcher = new Client(); const alice = new Client(); const bob = new Client();
@@ -113,7 +119,7 @@ test('가입부터 참여까지: 권한과 개인정보 노출 범위', async (t
     const full = await bob.act('finish', { studyId, slotId: s.slots[0].id, answers: { q1: 2 } });
     assert.equal(full.status, 400);
     assert.match(full.error, /마감/);
-    assert.equal(get('SELECT booked FROM slots WHERE id = ?', s.slots[0].id).booked, 1);
+    assert.equal((await getDoc('studies', studyId)).slots[0].booked, 1);
   });
 
   await t.test('연구자가 받는 데이터에는 이름·이메일·전체 번호·서명이 없다', async () => {
@@ -130,9 +136,9 @@ test('가입부터 참여까지: 권한과 개인정보 노출 범위', async (t
     const s = await bob.state();
     assert.equal(s.S.enrollments.length, 1);
     assert.equal(s.S.users.filter((u) => u.role === 'participant').length, 1);
-    const row = get(`SELECT pii_enc, profile_enc FROM users WHERE email = 'alice@example.com'`);
+    const row = await one(col('users').where('email', '==', 'alice@example.com'));
     assert.ok(!row.pii_enc.includes('앨리스') && !row.pii_enc.includes('010-9999') && !row.profile_enc.includes('학외'));
-    const enr = get(`SELECT e.* FROM enrollments e JOIN users u ON u.id = e.user_id WHERE u.email = 'alice@example.com'`);
+    const enr = await one(col('enrollments').where('user_id', '==', row.id));
     assert.ok(enr.responses_enc.startsWith('v1.') && enr.signature_enc.startsWith('v1.'));
   });
 
@@ -150,7 +156,8 @@ test('가입부터 참여까지: 권한과 개인정보 노출 범위', async (t
     await other.signup({ role: 'researcher', email: 'lee@hs.ac.kr', name: '이연구', rdept: '일반대학원', adv: '최 교수', eth: '2026-01-10', ethFile: { name: 'a.pdf', data: PDF } });
     assert.equal((await other.act('closeStudy', { id: studyId })).status, 404);
     assert.equal((await other.state()).S.enrollments.length, 0);
-    const fileId = get(`SELECT irb_file_id AS id FROM studies WHERE id = ?`, studyId).id;
+    const fileId = (await getDoc('studies', studyId)).irb_file_id;
+    assert.equal((await researcher.req(`/api/state`)).status, 200);
     assert.equal((await other.req(`/api/file/${fileId}`)).status, 404);
     assert.equal((await alice.req(`/api/file/${fileId}`)).status, 404);
   });
@@ -171,9 +178,9 @@ test('가입부터 참여까지: 권한과 개인정보 노출 범위', async (t
   await t.test('철회하면 응답이 폐기되고, 탈퇴하면 이름·연락처가 지워진다', async () => {
     const e = (await bob.state()).S.enrollments[0];
     assert.equal((await bob.act('withdraw', { id: e.id, choice: 'destroy' })).status, 200);
-    assert.equal(get('SELECT responses_enc FROM enrollments WHERE id = ?', e.id).responses_enc, null);
+    assert.equal((await getDoc('enrollments', e.id)).responses_enc, null);
     assert.equal((await bob.act('deleteAccount')).status, 200);
-    assert.equal(get(`SELECT COUNT(*) n FROM users WHERE email = 'bob@example.com'`).n, 0);
+    assert.equal((await find(col('users').where('email', '==', 'bob@example.com'))).length, 0);
     assert.equal((await bob.state()).S.session, null);
     const c = new Client(); await c.state();
     assert.equal((await c.act('login', { email: 'bob@example.com', pw: 'long-password-1' })).status, 400);
