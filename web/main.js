@@ -454,6 +454,7 @@ function shell(u){
   const av = {admin:["var(--t-peach)","var(--orange-deep)"], researcher:["var(--t-sky)","#0b4f8a"], participant:["var(--t-lav)","var(--purple-800)"]}[u.role];
   return `<div class="shell"><aside class="side" aria-label="메뉴">
     <button class="ws" data-act="go" data-v="landing" title="홈페이지로 이동" aria-label="한신 리서치풀 홈페이지로 이동"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="" style="width:30px;height:30px"><span class="names"><b>한신 리서치풀</b><span class="caption steel">한신대학교 일반대학원</span></span></button>${items}
+    <div class="grp">사이트</div><button class="nav-item" data-act="go" data-v="landing">${icon("arrow",17)}<span class="txt">홈페이지 보기</span></button>
     <div class="me"><span class="avatar" style="background:${av[0]};color:${av[1]}">${esc(u.name[0])}</span><div class="who" style="min-width:0;flex:1"><div class="body-sm" style="font-weight:600">${esc(u.name)}</div><div class="caption steel">${roleName}${u.pid ? " · " + u.pid : ""}</div></div>
     <button class="icon-btn" data-act="logout" title="로그아웃" aria-label="로그아웃">${icon("logout",17)}</button></div>
   </aside><main class="main">${promo()}${content(u)}</main></div>`;
