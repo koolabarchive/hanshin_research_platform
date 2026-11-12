@@ -79,3 +79,23 @@ test('설문 응답 정리: 문항 정의에 없는 값은 버린다', () => {
   assert.deepEqual(D.cleanAnswers(survey, { a: 9, b: 'z', c: ['p', 'hack'], d: '  글  ', e: '없는 문항' }), { c: ['p'], d: '글' });
   assert.deepEqual(D.cleanAnswers(survey, { a: '3', b: 'x' }), { a: 3, b: 'x' });
 });
+
+test('리커트 척도: 2~10점을 고를 수 있고, 응답은 그 범위 안에서만 인정된다', () => {
+  const d = D.sanitizeDraft({ survey: [
+    { id: 'a', type: 'likert', text: '7점', points: 7, labels: ['전혀 아니다', '', '', '', '', '', '매우 그렇다', '넘치는 이름'] },
+    { id: 'b', type: 'likert', text: '범위 밖', points: 99 },
+    { id: 'c', type: 'likert', text: '예전 문항' },
+    { id: 'e', type: 'single', text: '선택', options: ['x', 'y'], points: 7 },
+  ] }, NOW);
+  assert.equal(d.survey[0].points, 7);
+  assert.deepEqual(d.survey[0].labels, ['전혀 아니다', '', '', '', '', '', '매우 그렇다']);
+  assert.equal(d.survey[1].points, 10);
+  assert.equal(d.survey[2].points, 5);
+  assert.equal(d.survey[3].points, undefined); // 리커트가 아닌 문항에는 붙지 않는다.
+  assert.deepEqual(D.cleanAnswers(d.survey, { a: 7, b: 10, c: 5 }), { a: 7, b: 10, c: 5 });
+  assert.deepEqual(D.cleanAnswers(d.survey, { a: 8, b: 11, c: 6 }), {});
+  assert.deepEqual(D.cleanAnswers(d.survey, { a: 0, b: 2.5, c: '3' }), { c: 3 });
+  // 점수를 정하지 않은 예전 문항은 5점 척도로 본다.
+  assert.deepEqual(D.cleanAnswers([{ id: 'old', type: 'likert', options: [] }], { old: 5 }), { old: 5 });
+  assert.deepEqual(D.cleanAnswers([{ id: 'old', type: 'likert', options: [] }], { old: 6 }), {});
+});

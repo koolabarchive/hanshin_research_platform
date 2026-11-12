@@ -332,6 +332,7 @@ footer.foot{border-top:1px solid var(--hair);padding:64px 0 48px;margin-top:96px
 .likert label:has(input:checked){background:var(--primary);border-color:var(--primary);color:#e9e6ff}
 .likert label:has(input:checked) b{color:#fff}
 .likert label:has(input:focus-visible){outline:2px solid var(--primary);outline-offset:2px}
+.likert-ends{display:none;justify-content:space-between;gap:12px;margin-top:6px;font-size:12px;color:var(--steel)}
 .opt{display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--hair);border-radius:8px;cursor:pointer;font-size:15px}
 .opt:has(input:checked){border-color:var(--primary);background:#f4f2fd}
 .msg{border:1px solid var(--hair);border-radius:12px;background:var(--canvas)}
@@ -381,8 +382,10 @@ footer.foot{border-top:1px solid var(--hair);padding:64px 0 48px;margin-top:96px
   .msg .mb{padding-left:18px}
   .msg button.mh{grid-template-columns:52px minmax(0,1fr)}
   .msg button.mh .when{display:none}
-  .likert{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .likert{gap:4px}
+  .likert label{padding:10px 2px}
   .likert label span{display:none}
+  .likert-ends{display:flex}
 }
 @media (max-width:479px){.hero h1{font-size:36px}.tiles{grid-template-columns:1fr}.foot-grid{grid-template-columns:1fr 1fr}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}

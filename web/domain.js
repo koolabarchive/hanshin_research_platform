@@ -22,6 +22,8 @@ const ACTIVE = ['consented', 'scheduled', 'completed', 'paid'];
 const DONE = ['completed', 'paid'];
 const AGE_BANDS = ['20대 초반', '20대 중반', '20대 후반', '30대', '40대 이상'];
 const MIN_AGE = 19;
+const LIKERT_MIN = 2;
+const LIKERT_MAX = 10;
 const WEEKLY_NOTICE_LIMIT = 3; // 한 사람에게 일주일 동안 보내는 모집 안내 상한
 const MIN_COUNT = 5; // 임의 조건으로 조회한 인원이 이보다 적으면 정확한 숫자를 가린다.
 const POOL_BREAKDOWN_MIN = 20; // 대기풀이 이보다 작으면 분포를 보여 주지 않는다.
@@ -126,7 +128,13 @@ function sanitizeDraft(d, now = Date.now()) {
     const options = ['single', 'multi'].includes(qtype)
       ? (Array.isArray(q.options) ? q.options : []).map((o) => line(o, 200)).filter(Boolean).slice(0, 30)
       : [];
-    return { id: /^[a-z0-9]{1,20}$/i.test(String(q.id || '')) ? String(q.id) : `q${i + 1}${now.toString(36)}`, type: qtype, text: line(q.text, 500), options, required: !!q.required };
+    const out = { id: /^[a-z0-9]{1,20}$/i.test(String(q.id || '')) ? String(q.id) : `q${i + 1}${now.toString(36)}`, type: qtype, text: line(q.text, 500), options, required: !!q.required };
+    // 리커트 척도: 몇 점 척도인지(2~10점)와 각 점수의 이름. 이름은 비워 둘 수 있다(양 끝만 적는 경우).
+    if (qtype === 'likert') {
+      out.points = intIn(q.points, LIKERT_MIN, LIKERT_MAX, 5);
+      if (Array.isArray(q.labels)) out.labels = Array.from({ length: out.points }, (_, k) => line(q.labels[k], 40));
+    }
+    return out;
   });
   // 문항 ID가 겹치면 응답이 섞이므로 뒤쪽 것에 새 ID를 준다.
   const seen = new Set();
@@ -204,7 +212,7 @@ function cleanAnswers(survey, answers) {
     const a = (answers || {})[q.id];
     if (q.type === 'likert') {
       const n = Number(a);
-      if ([1, 2, 3, 4, 5].includes(n)) out[q.id] = n;
+      if (Number.isInteger(n) && n >= 1 && n <= (q.points || 5)) out[q.id] = n; // 예전 문항(점수 미지정)은 5점 척도
     } else if (q.type === 'single') {
       if (q.options.includes(a)) out[q.id] = a;
     } else if (q.type === 'multi') {
@@ -251,7 +259,7 @@ const shuffle = (arr, r = Math.random) => {
 
 module.exports = {
   DAY, CAMPUS_STATUSES, EXTERNAL_STATUS, STATUSES, GENDERS, DEPTS_UG, DEPTS, INTERESTS, TIMES, TYPES, ONSITE, TINTS,
-  REWARD_TYPES, QTYPES, EXPL, PROGRAMS, ACTIVE, DONE, AGE_BANDS, MIN_AGE, WEEKLY_NOTICE_LIMIT, MIN_COUNT, POOL_BREAKDOWN_MIN,
+  REWARD_TYPES, QTYPES, LIKERT_MIN, LIKERT_MAX, EXPL, PROGRAMS, ACTIVE, DONE, AGE_BANDS, MIN_AGE, WEEKLY_NOTICE_LIMIT, MIN_COUNT, POOL_BREAKDOWN_MIN,
   SEGMENTS, CHANNEL_LABEL,
   pad, toYMD, endTs, fmtD, fmtMD, fmtDT, won, eucBytes, ageOf, ageBand, matches, rewardText, fillTpl,
   defaultConsent, defaultTemplates, sanitizeDraft, checks, hasAns, cleanAnswers, counts, mulberry32, shuffle,

@@ -24,7 +24,14 @@ const ST_STATUS = {draft:["작성 중","tag-gray"], review:["심사 중","tag-or
 const EN_STATUS = {invited:["초대됨","tag-sky"], consented:["동의 완료","tag-purple"], scheduled:["일정 확정","tag-yellow"], completed:["참여 완료","tag-green"], paid:["보상 지급","tag-cream"], withdrawn:["철회","tag-rose"]};
 const LIKERT = ["전혀 아니다","아니다","보통이다","그렇다","매우 그렇다"];
 const EXPL = [["purpose","연구 목적"],["procedure","연구 절차"],["risks","예상되는 위험과 불편"],["benefits","기대 이익과 보상"],["privacy","개인정보 보호와 자료 보관"],["withdraw","참여 철회"],["contact","문의처"]];
-const QTYPES = {likert:"5점 척도", single:"단일 선택", multi:"복수 선택", short:"단답형", long:"서술형"};
+// 리커트 척도는 2~10점 중에서 고르고 각 점수의 이름을 정할 수 있다. 자주 쓰는 점수에는 기본 이름을 채워 준다.
+const LIKERT_DEFAULTS = {2:["아니다","그렇다"], 3:["아니다","보통이다","그렇다"], 4:["전혀 아니다","아니다","그렇다","매우 그렇다"], 5:LIKERT,
+  6:["전혀 아니다","아니다","약간 아니다","약간 그렇다","그렇다","매우 그렇다"], 7:["전혀 아니다","아니다","약간 아니다","보통이다","약간 그렇다","그렇다","매우 그렇다"]};
+function likertLabels(n){ if (LIKERT_DEFAULTS[n]) return LIKERT_DEFAULTS[n].slice(); const a = Array(n).fill(""); a[0] = "전혀 아니다"; a[n-1] = "매우 그렇다"; return a; }
+// 문항의 척도 정보. 점수를 정하지 않은 예전 문항은 5점 척도로 본다.
+function likertOf(qq){ const n = Math.min(10, Math.max(2, Number(qq.points) || 5)); const src = Array.isArray(qq.labels) ? qq.labels : likertLabels(n); return {n, labels:Array.from({length:n}, (_, i) => src[i] || "")}; }
+const qTypeLabel = qq => qq.type === "likert" ? `${likertOf(qq).n}점 리커트 척도` : QTYPES[qq.type];
+const QTYPES = {likert:"리커트 척도", single:"단일 선택", multi:"복수 선택", short:"단답형", long:"서술형"};
 const ACTIVE = ["consented","scheduled","completed","paid"];
 const DONE = ["completed","paid"];
 
@@ -667,16 +674,17 @@ function tData(st, en){
   <div class="stack">${st.survey.map((qq, i) => {
     let inner = "";
     if (["likert","single","multi"].includes(qq.type)){
-      const opts = qq.type === "likert" ? [1,2,3,4,5] : qq.options;
+      const L = qq.type === "likert" ? likertOf(qq) : null;
+      const opts = L ? Array.from({length:L.n}, (_, k) => k + 1) : qq.options;
       const cnt = opts.map(o => rs.filter(e => { const a = e.responses[qq.id]; return Array.isArray(a) ? a.includes(o) : a === o; }).length);
       const mx = Math.max(1, ...cnt);
-      const mean = qq.type === "likert" && rs.length ? (rs.reduce((s, e) => s + (e.responses[qq.id] || 0), 0) / rs.length).toFixed(2) : null;
-      inner = `<div class="dist">${opts.map((o, j) => `<div class="d"><span class="slate">${qq.type === "likert" ? `${o} ${LIKERT[o-1]}` : esc(o)}</span><div class="bar"><i style="width:${cnt[j] / mx * 100}%"></i></div><span class="num" style="text-align:right">${cnt[j]}</span></div>`).join("")}</div>${mean ? `<p class="caption steel" style="margin-top:8px">평균 ${mean}점</p>` : ""}`;
+      const mean = L && rs.length ? (rs.reduce((s, e) => s + (e.responses[qq.id] || 0), 0) / rs.length).toFixed(2) : null;
+      inner = `<div class="dist">${opts.map((o, j) => `<div class="d"><span class="slate">${L ? `${o} ${esc(L.labels[o-1])}` : esc(o)}</span><div class="bar"><i style="width:${cnt[j] / mx * 100}%"></i></div><span class="num" style="text-align:right">${cnt[j]}</span></div>`).join("")}</div>${mean ? `<p class="caption steel" style="margin-top:8px">평균 ${mean}점</p>` : ""}`;
     } else {
       const txt = rs.map(e => e.responses[qq.id]).filter(Boolean);
       inner = txt.length ? `<ul style="margin:0;padding-left:18px" class="body-sm charcoal">${txt.slice(0, 5).map(t => `<li>${esc(t)}</li>`).join("")}</ul><p class="caption steel" style="margin-top:6px">${txt.length}건 중 5건 표시</p>` : `<p class="body-sm steel">응답이 없어요.</p>`;
     }
-    return `<div class="card"><p class="caption steel">${i+1}. ${QTYPES[qq.type]}</p><h3 class="h5" style="margin:4px 0 14px">${esc(qq.text)}</h3>${inner}</div>`;
+    return `<div class="card"><p class="caption steel">${i+1}. ${qTypeLabel(qq)}</p><h3 class="h5" style="margin:4px 0 14px">${esc(qq.text)}</h3>${inner}</div>`;
   }).join("")}</div>`;
 }
 function studyInfoHtml(st){
@@ -690,7 +698,7 @@ function studyInfoHtml(st){
       ${cr.exclude ? `<p class="body-sm slate" style="margin-top:12px"><b>제외 기준</b> ${esc(cr.exclude)}</p>` : ""}</div>
     <div><h2 class="h5" style="margin-bottom:10px">연구설명문</h2><div class="expl">${EXPL.map(([k, t]) => `<details open><summary>${t}</summary><p>${esc(st.explanation[k] || "(작성 전)")}</p></details>`).join("")}</div></div>
     <div class="card"><h2 class="h5" style="margin-bottom:10px">동의서 항목 ${st.consent.length}개</h2><ol class="body-sm charcoal" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">${st.consent.map(c => `<li>${esc(c)}</li>`).join("")}</ol><p class="caption steel" style="margin-top:10px">서명 방식: 성명 입력 전자서명${st.consentCopy ? " · 동의서 사본 이메일 발송" : ""}</p></div>
-    <div class="card"><h2 class="h5" style="margin-bottom:10px">설문지 ${st.survey.length}문항</h2>${st.survey.length ? `<ol class="body-sm charcoal" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px">${st.survey.map(qq => `<li>${esc(qq.text)} <span class="tag tag-gray" style="margin-left:4px">${QTYPES[qq.type]}</span>${qq.required ? "" : ` <span class="caption steel">선택 응답</span>`}${qq.options.length ? `<div class="caption steel">${qq.options.map(esc).join(" / ")}</div>` : ""}</li>`).join("")}</ol>` : `<p class="body-sm steel">문항이 없어요.</p>`}</div>
+    <div class="card"><h2 class="h5" style="margin-bottom:10px">설문지 ${st.survey.length}문항</h2>${st.survey.length ? `<ol class="body-sm charcoal" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px">${st.survey.map(qq => `<li>${esc(qq.text)} <span class="tag tag-gray" style="margin-left:4px">${qTypeLabel(qq)}</span>${qq.required ? "" : ` <span class="caption steel">선택 응답</span>`}${qq.options.length ? `<div class="caption steel">${qq.options.map(esc).join(" / ")}</div>` : ""}</li>`).join("")}</ol>` : `<p class="body-sm steel">문항이 없어요.</p>`}</div>
     ${st.slots.length ? `<div class="card"><h2 class="h5" style="margin-bottom:10px">예약 가능한 시간 ${st.slots.length}개</h2><div class="chips">${st.slots.map(s => `<span class="tag tag-gray num">${fmtDT(s.at)} · ${s.cap}명</span>`).join("")}</div></div>` : ""}
   </div>`;
 }
@@ -773,7 +781,10 @@ function w4(d){
       <label class="check" style="margin-left:8px"><input type="checkbox" id="w-qr-${i}" data-q="${i}" data-qf="required" ${qq.required?"checked":""}>필수</label>
       <span style="margin-left:auto" class="row"><button class="icon-btn" data-act="upQ" data-v="${i}" aria-label="위로">${icon("up",16)}</button><button class="icon-btn" data-act="downQ" data-v="${i}" aria-label="아래로">${icon("down",16)}</button><button class="icon-btn" data-act="delQ" data-v="${i}" aria-label="문항 삭제">${icon("trash",16)}</button></span></div>
     <input class="input" id="w-qx-${i}" data-q="${i}" data-qf="text" value="${esc(qq.text)}" placeholder="문항 내용" aria-label="문항 ${i+1} 내용">
-    ${["single","multi"].includes(qq.type) ? `<textarea class="input" id="w-qo-${i}" data-q="${i}" data-qf="options" rows="3" aria-label="선택지 (한 줄에 하나)">${esc(qq.options.join("\n"))}</textarea><p class="hint">선택지를 한 줄에 하나씩 적어 주세요.</p>` : qq.type === "likert" ? `<p class="hint">${LIKERT.map((l, j) => `${j+1} ${l}`).join(" · ")}</p>` : ""}
+    ${["single","multi"].includes(qq.type) ? `<textarea class="input" id="w-qo-${i}" data-q="${i}" data-qf="options" rows="3" aria-label="선택지 (한 줄에 하나)">${esc(qq.options.join("\n"))}</textarea><p class="hint">선택지를 한 줄에 하나씩 적어 주세요.</p>` : qq.type === "likert" ? (() => { const L = likertOf(qq); return `<div class="row" style="align-items:flex-start;flex-wrap:nowrap;gap:12px">
+      <div style="flex:none;display:flex;flex-direction:column;gap:6px"><label class="label" for="w-qp-${i}">척도</label><select class="input" style="width:100px;height:36px" id="w-qp-${i}" data-q="${i}" data-qf="points">${[2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${L.n===n?"selected":""}>${n}점</option>`).join("")}</select></div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px"><label class="label" for="w-ql-${i}">각 점수의 이름 (1점부터 한 줄에 하나)</label><textarea class="input" id="w-ql-${i}" data-q="${i}" data-qf="labels" rows="${Math.min(L.n, 7)}">${esc(L.labels.join("\n"))}</textarea></div></div>
+      <p class="hint">점수를 바꾸면 기본 이름으로 다시 채워집니다. 이름을 비워 둔 점수는 숫자만 보이므로 양 끝만 적어도 됩니다.</p>`; })() : ""}
   </div>`).join("") || `<div class="empty">아직 문항이 없어요. 아래에서 유형을 골라 추가하세요.</div>`}
   <div class="row">${Object.entries(QTYPES).map(([k, t]) => `<button class="btn btn-secondary btn-sm" data-act="addQ" data-v="${k}">${icon("plus",14)}${t}</button>`).join("")}</div></div>`;
 }
@@ -971,7 +982,9 @@ function pFlow(u){
 const hasAns = a => Array.isArray(a) ? a.length > 0 : a !== undefined && a !== null && String(a).trim() !== "";
 function ansInput(qq, a){
   const n = "ans-" + qq.id;
-  if (qq.type === "likert") return `<div class="likert">${LIKERT.map((l, j) => `<label><input type="radio" name="${n}" id="${n}-${j}" data-ans="${qq.id}" value="${j+1}" ${Number(a)===j+1?"checked":""}><b>${j+1}</b><span>${l}</span></label>`).join("")}</div>`;
+  if (qq.type === "likert"){ const L = likertOf(qq);
+    return `<div class="likert" style="grid-template-columns:repeat(${L.n},minmax(0,1fr))">${L.labels.map((l, j) => `<label><input type="radio" name="${n}" id="${n}-${j}" data-ans="${qq.id}" value="${j+1}" ${Number(a)===j+1?"checked":""}><b>${j+1}</b><span>${esc(l)}</span></label>`).join("")}</div>
+    <div class="likert-ends"><span>1 ${esc(L.labels[0])}</span><span>${L.n} ${esc(L.labels[L.n-1])}</span></div>`; }
   if (qq.type === "single") return `<div class="stack-sm">${qq.options.map((o, j) => `<label class="opt"><input type="radio" name="${n}" id="${n}-${j}" data-ans="${qq.id}" value="${esc(o)}" ${a===o?"checked":""}>${esc(o)}</label>`).join("")}</div>`;
   if (qq.type === "multi") return `<div class="stack-sm">${qq.options.map((o, j) => `<label class="opt"><input type="checkbox" id="${n}-${j}" data-ans="${qq.id}" data-multi value="${esc(o)}" ${(a||[]).includes(o)?"checked":""}>${esc(o)}</label>`).join("")}</div>`;
   if (qq.type === "short") return `<input class="input" id="${n}" data-ans="${qq.id}" value="${esc(a || "")}" aria-label="답변">`;
@@ -1098,8 +1111,11 @@ function onInput(e){
   if (d.q !== undefined && ui.draft){ const qq = ui.draft.survey[+d.q]; const f = d.qf;
     if (f === "options") qq.options = t.value.split("\n").map(s => s.trim()).filter(Boolean);
     else if (f === "required") qq.required = t.checked;
+    else if (f === "points"){ qq.points = Number(t.value) || 5; qq.labels = likertLabels(qq.points); if (e.type === "change") render(); }
+    else if (f === "labels"){ const rows = t.value.split("\n"); qq.labels = Array.from({length:likertOf(qq).n}, (_, k) => (rows[k] || "").trim().slice(0, 40)); }
     else qq[f] = t.value;
-    if (f === "type" && e.type === "change"){ if (["single","multi"].includes(qq.type) && !qq.options.length) qq.options = ["선택지 1","선택지 2"]; if (!["single","multi"].includes(qq.type)) qq.options = []; render(); } }
+    if (f === "type" && e.type === "change"){ if (["single","multi"].includes(qq.type) && !qq.options.length) qq.options = ["선택지 1","선택지 2"]; if (!["single","multi"].includes(qq.type)) qq.options = [];
+      if (qq.type === "likert" && !qq.points){ qq.points = 5; qq.labels = likertLabels(5); } render(); } }
   if (d.ci !== undefined && ui.draft) ui.draft.consent[+d.ci] = t.value;
   if (d.slot !== undefined && ui.draft){ const s = ui.draft.slots[+d.slot]; if (d.sf === "cap") s.cap = Math.max(1, Number(t.value) || 1); else if (t.value) s.at = new Date(t.value).getTime(); }
   if (d.f !== undefined){ if (t.type === "radio" && !t.checked) return; ui.form[d.f] = val; if (d.rr !== undefined && e.type === "change") render(); }
@@ -1116,7 +1132,7 @@ function onInput(e){
     if (d.fl){ if (t.type === "radio" && !t.checked) return; ui.flow[d.fl] = val; }
     if (d.fc !== undefined) ui.flow.checks[+d.fc] = t.checked;
     if (d.ans){ if (d.multi !== undefined){ const arr = ui.flow.answers[d.ans] = ui.flow.answers[d.ans] || []; const i = arr.indexOf(t.value); if (t.checked && i < 0) arr.push(t.value); if (!t.checked && i >= 0) arr.splice(i, 1); }
-      else if (t.type !== "radio" || t.checked) ui.flow.answers[d.ans] = t.type === "radio" && /^\d$/.test(t.value) && studyById(ui.flow.studyId).survey.find(q => q.id === d.ans).type === "likert" ? Number(t.value) : t.value; }
+      else if (t.type !== "radio" || t.checked) ui.flow.answers[d.ans] = t.type === "radio" && /^\d+$/.test(t.value) && studyById(ui.flow.studyId).survey.find(q => q.id === d.ans).type === "likert" ? Number(t.value) : t.value; }
   }
   updateLive();
 }
@@ -1194,7 +1210,7 @@ const ACT = {
     const j = await call("submitStudy", {draft:d, pledge:true}); if (!j) return;
     ui.draft = null; ui.tab = "info"; go("r-study", {id:j.id}); toast(j.toast);
   },
-  addQ: el => { const t = el.dataset.v; ui.draft.survey.push({id:"q" + Date.now().toString(36), type:t, text:"", options:["single","multi"].includes(t) ? ["선택지 1","선택지 2"] : [], required:t !== "long"}); render(); const last = document.getElementById(`w-qx-${ui.draft.survey.length - 1}`); if (last) last.focus(); },
+  addQ: el => { const t = el.dataset.v; ui.draft.survey.push({id:"q" + Date.now().toString(36), type:t, text:"", options:["single","multi"].includes(t) ? ["선택지 1","선택지 2"] : [], required:t !== "long", ...(t === "likert" ? {points:5, labels:likertLabels(5)} : {})}); render(); const last = document.getElementById(`w-qx-${ui.draft.survey.length - 1}`); if (last) last.focus(); },
   delQ: el => { ui.draft.survey.splice(+el.dataset.v, 1); render(); },
   upQ: el => { const i = +el.dataset.v, a = ui.draft.survey; if (i > 0) [a[i-1], a[i]] = [a[i], a[i-1]]; render(); },
   downQ: el => { const i = +el.dataset.v, a = ui.draft.survey; if (i < a.length - 1) [a[i+1], a[i]] = [a[i], a[i+1]]; render(); },
