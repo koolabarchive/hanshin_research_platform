@@ -63,7 +63,7 @@ http://localhost:3000 을 열고 `로그인`을 누르면 시연 계정(참여�
 
 **아래 절차는 실제 프로젝트에서 확인하지 못했습니다.** 이 저장소의 검증은 모두 에뮬레이터에서 했습니다.
 
-먼저 정할 것: 이 플랫폼 전용 Firebase 프로젝트를 새로 만드는 것을 권합니다. `firebase deploy`는 그 프로젝트의 **기존 Firestore 규칙을 통째로 바꾸므로**, 다른 앱이 쓰는 프로젝트(예: 지금 `.firebaserc`와 `web/firebase-config.js`에 적힌 `koolab-33917`)에 그대로 배포하면 그 앱이 막힐 수 있습니다. 프로젝트를 바꾸려면 이 두 파일만 고치면 됩니다.
+배포 대상은 이 플랫폼 전용 프로젝트 `hsresearch-d0c1a`입니다(`.firebaserc`와 `web/firebase-config.js`). `firebase deploy`는 대상 프로젝트의 **Firestore 규칙을 통째로 바꾸므로**, 다른 앱이 쓰는 프로젝트에는 배포하지 않습니다. 프로젝트를 바꾸려면 이 두 파일만 고치면 됩니다.
 
 1. Firebase 콘솔에서: Firestore 데이터베이스를 **서울(asia-northeast3)** 에 만들고, Authentication에서 **이메일/비밀번호** 로그인을 켭니다. Functions를 쓰려면 Blaze(종량제) 요금제가 필요합니다.
 2. Authentication > Settings > Authorized domains 에 화면을 올릴 주소(예: `koolabarchive.github.io`)를 추가합니다.
