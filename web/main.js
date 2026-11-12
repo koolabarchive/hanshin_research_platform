@@ -16,6 +16,9 @@ const TYPES = {survey:"온라인 설문", lab:"대면 실험", interview:"면담
 const ONSITE = ["lab","interview","program"]; // 장소와 예약 시간이 필요한 유형
 const TYPE_TAG = {survey:"tag-sky", lab:"tag-green", interview:"tag-orange", program:"tag-rose", longitudinal:"tag-purple"};
 const REWARD_TYPES = ["모바일 상품권","현금","없음"];
+// 연구자 가입 화면에서 고르는 지도교수 목록. 목록에 없으면 '기타'를 골라 직접 적는다.
+const ADVISORS = ["오현숙 교수","구훈정 교수","안도연 교수"];
+const ADVISOR_OTHER = "기타 (직접 입력)";
 const TINTS = {sky:["var(--t-sky)","#0075de"], mint:["var(--t-mint)","#1aae39"], peach:["var(--t-peach)","#dd5b00"], lav:["var(--t-lav)","#7b3ff2"], rose:["var(--t-rose)","#ff64c8"], yellow:["var(--t-yellow)","#d9b300"], cream:["var(--t-cream)","#523410"]};
 const ST_STATUS = {draft:["작성 중","tag-gray"], review:["심사 중","tag-orange"], recruiting:["모집 중","tag-green"], closed:["모집 마감","tag-gray"], rejected:["보완 요청","tag-rose"]};
 const EN_STATUS = {invited:["초대됨","tag-sky"], consented:["동의 완료","tag-purple"], scheduled:["일정 확정","tag-yellow"], completed:["참여 완료","tag-green"], paid:["보상 지급","tag-cream"], withdrawn:["철회","tag-rose"]};
@@ -414,7 +417,7 @@ function signupForm(){
       ${fld("소속 학과·전공","f-rdept",`<input class="input" id="f-rdept" data-f="rdept" placeholder="예: 일반대학원 심리학과" value="${fv("rdept")}">`,"",true)}
     </div>
     <div class="two">
-      ${fld("지도교수","f-adv",`<input class="input" id="f-adv" data-f="adv" placeholder="예: 박지훈 교수" value="${fv("adv")}">`,"",true)}
+      ${fld("지도교수","f-advsel",`<select class="input" id="f-advsel" data-f="advSel" data-rr><option value="">선택</option>${[...ADVISORS, ADVISOR_OTHER].map(g => `<option ${ui.form.advSel===g?"selected":""}>${g}</option>`).join("")}</select>${ui.form.advSel === ADVISOR_OTHER ? `<input class="input" style="margin-top:8px" id="f-adv" data-f="adv" placeholder="예: 홍길동 교수" aria-label="지도교수 이름" value="${fv("adv")}">` : ""}`,"",true)}
       ${fld("연구윤리교육 이수일","f-eth",`<input class="input" id="f-eth" data-f="eth" type="date" value="${fv("eth")}">`,"",true)}
     </div>
     ${fld("연구윤리교육 이수증","f-ethfile",`<input class="input" id="f-ethfile" data-ffile="ethFile" type="file" accept=".pdf,.jpg,.jpeg,.png" style="padding:9px 12px">`, ui.form.ethFile ? `첨부됨: ${esc(ui.form.ethFile)}` : "연구지원팀이 확인한 뒤 심사 제출이 열립니다.", true)}
@@ -1147,7 +1150,7 @@ const FORMS = {
     const f = ui.form, isP = ui.signRole === "participant";
     const j = await call("signup", {role:ui.signRole, name:f.name, phone:f.phone, email:f.email, code:f.code, pw:f.pw, a1:!!f.a1, a2:!!f.a2, a3:f.a3 !== false,
       by:f.by, gender:f.gender, status:f.status, dept:f.dept, year:f.year, interests:f.interests || [], times:f.times || [], sms:f.sms !== false,
-      prog:f.prog, rdept:f.rdept, adv:f.adv, eth:f.eth, ethFile:!isP && f.ethFileData ? {name:f.ethFile, data:f.ethFileData} : null});
+      prog:f.prog, rdept:f.rdept, adv:f.advSel === ADVISOR_OTHER ? f.adv : f.advSel, eth:f.eth, ethFile:!isP && f.ethFileData ? {name:f.ethFile, data:f.ethFileData} : null});
     if (!j){ const el = $("#formErr"); if (el) el.textContent = call.lastError; return; }
     enter(); if (j.toast) toast(j.toast);
   }
