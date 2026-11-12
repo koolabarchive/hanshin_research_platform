@@ -1,0 +1,17 @@
+// Firebase 프로젝트 연결 설정. 이 값들은 브라우저에 공개되는 식별자이며 비밀이 아니다.
+// (접근 통제는 firestore.rules 가 한다.) 프로젝트를 새로 만들면 이 객체만 바꾸면 된다.
+export const firebaseConfig = {
+  apiKey: "AIzaSyBU343U3lNzN-VKJwR3d0dVmtfmc59PqFQ",
+  authDomain: "koolab-33917.firebaseapp.com",
+  projectId: "koolab-33917",
+  storageBucket: "koolab-33917.firebasestorage.app",
+  messagingSenderId: "450572788018",
+  appId: "1:450572788018:web:2ce842486a4372367f772b",
+};
+
+// Functions와 Firestore 리전(서울).
+export const REGION = "asia-northeast3";
+
+// 내 컴퓨터(localhost)에서 열면 실제 프로젝트 대신 에뮬레이터에 붙는다. 시연 계정 버튼도 이때만 보인다.
+export const EMULATOR = ["localhost", "127.0.0.1"].includes(location.hostname);
+export const EMULATOR_PROJECT = "demo-hsrp";

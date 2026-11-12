@@ -1,5 +1,7 @@
 // 한신 리서치풀 — 화면 코드.
-// 서버(/api)가 내려 주는 데이터(S)를 그리고, 사용자의 동작을 서버에 전달한다.
+// 데이터 계층(data.js)이 Firestore에서 읽어 온 데이터(S)를 그리고, 사용자의 동작을 데이터 계층에 전달한다.
+// 이 파일을 고친 뒤에는 npm run build 로 public/app.js 를 다시 만든다.
+import * as HS from "./data.js";
 "use strict";
 /* ========== 상수 ========== */
 const DAY = 864e5;
@@ -72,16 +74,15 @@ const IC = {
 const icon = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n] || ""}</svg>`;
 
 /* ========== 한신대학교 로고 (data URI) ========== */
-const LOGO_EMBLEM = "/img/emblem.png";
-const LOGO_WHITE = "/img/emblem-white.png";
-const LOGO_HORIZ = "/img/logo-horizontal.png";
+const LOGO_EMBLEM = "img/emblem.png";
+const LOGO_WHITE = "img/emblem-white.png";
+const LOGO_HORIZ = "img/logo-horizontal.png";
 const brand = () => `<span class="names"><span>한신 리서치풀</span><span class="sub-name">한신대학교 일반대학원</span></span>`;
 
 /* ========== 데이터 ========== */
-// 화면이 그리는 데이터(S)는 서버가 로그인한 사람의 역할에 맞춰 걸러서 내려 준다.
+// 화면이 그리는 데이터(S). Firestore 보안 규칙이 허용한 것만 읽혀 들어온다.
 // 이 파일은 받은 것을 그리기만 하고, 권한 판단은 하지 않는다.
 let S = {session:null, demo:false, users:[], studies:[], enrollments:[], inquiries:[], messages:[], sendLogs:[], audit:[], stats:{}};
-let CSRF = "";
 const ui = {view:"landing", p:{}, tab:"overview", authMode:"login", signRole:"participant", code:null, form:{}, draft:null, step:0, flow:null, filter:"all", sel:new Set(), modal:null, adminTab:"review", openMsg:null, pFilter:"all", pOnlyFit:false};
 
 function defaultExplanation(o){
@@ -112,21 +113,14 @@ function defaultTemplates(){
     remind3: true, remindEnd: true
   };
 }
-async function api(path, body){
-  try {
-    const r = await fetch(path, body === undefined ? {headers:{Accept:"application/json"}} : {method:"POST", headers:{"Content-Type":"application/json", "X-CSRF-Token":CSRF}, body:JSON.stringify(body)});
-    const j = await r.json().catch(() => ({}));
-    if (j.csrf) CSRF = j.csrf;
-    if (j.S) S = j.S;
-    return r.ok ? j : {error:j.error || "요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요."};
-  } catch(e){ return {error:"서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요."}; }
-}
-const refresh = () => api("/api/state");
-// 데이터를 바꾸는 요청. 실패하면 이유를 알리고 null을 돌려준다. 같은 요청이 겹쳐 나가지 않게 한다.
+async function refresh(){ try { S = await HS.loadState(); } catch(e){ toast(HS.errorText(e)); } }
+// 동작 하나를 실행하고 최신 데이터를 다시 읽는다. 실패하면 {error}를 돌려준다.
+async function run(name, payload){ try { const j = await HS.act(name, payload || {}); await refresh(); return j; } catch(e){ return {error:HS.errorText(e)}; } }
+// 화면을 바꾸는 동작용: 실패하면 이유를 알리고 null을 돌려준다. 같은 요청이 겹쳐 나가지 않게 한다.
 let busy = false;
 async function call(name, payload){
   if (busy) return null; busy = true;
-  const j = await api("/api/act/" + name, payload || {}); busy = false;
+  const j = await run(name, payload); busy = false;
   if (j.error){ call.lastError = j.error; render(); toast(j.error); return null; }
   return j;
 }
@@ -173,7 +167,7 @@ function liveCount(){
   const key = JSON.stringify(ui.draft.criteria);
   el.textContent = _pc.text; if (key === _pc.key) return;
   clearTimeout(_pc.timer);
-  _pc.timer = setTimeout(async () => { const j = await api("/api/pool-count", {criteria:JSON.parse(key)}); _pc.key = key; _pc.text = j.text || "-"; const x = $("#matchCount"); if (x) x.textContent = _pc.text; }, 350);
+  _pc.timer = setTimeout(async () => { let text = "-"; try { text = await HS.poolCount(JSON.parse(key)); } catch(e){} _pc.key = key; _pc.text = text; const x = $("#matchCount"); if (x) x.textContent = _pc.text; }, 350);
 }
 function counts(en){
   const by = s => en.filter(e => e.status === s).length;
@@ -380,8 +374,7 @@ function signupForm(){
   const common = `
     <div class="two">${fld("이름","f-name",`<input class="input" id="f-name" data-f="name" autocomplete="name" value="${fv("name")}">`,"",true)}
     ${fld("휴대전화","f-phone",`<input class="input" id="f-phone" data-f="phone" inputmode="tel" placeholder="010-0000-0000" value="${fv("phone")}">`, isP ? "문자 안내와 상품권 발송에만 쓰이며 연구자에게 보이지 않습니다." : "", true)}</div>
-    ${fld(isP ? "이메일" : "학교 이메일","f-email",`<div class="row" style="flex-wrap:nowrap"><input class="input" id="f-email" data-f="email" type="email" placeholder="${ext ? "name@example.com" : "name@hs.ac.kr"}" value="${fv("email")}"><button type="button" class="btn btn-secondary" data-act="sendCode">인증번호 받기</button></div>`, emailHint, true)}
-    ${fld("인증번호","f-code",`<input class="input" id="f-code" data-f="code" inputmode="numeric" maxlength="6" placeholder="6자리" value="${fv("code")}">`)}
+    ${fld(isP ? "이메일" : "학교 이메일","f-email",`<div class="row" style="flex-wrap:nowrap"><input class="input" id="f-email" data-f="email" type="email" placeholder="${ext ? "name@example.com" : "name@hs.ac.kr"}" value="${fv("email")}"></div>`, emailHint, true)}
     ${fld("비밀번호","f-pw",`<input class="input" id="f-pw" data-f="pw" type="password" autocomplete="new-password" value="${fv("pw")}">`,"10자 이상",true)}`;
   const pFields = `
     <div class="three">
@@ -681,7 +674,7 @@ function studyInfoHtml(st){
       <div><dt>연구 유형</dt><dd>${TYPES[st.type]}</dd></div><div><dt>1회 소요 시간</dt><dd>${st.minutes}분</dd></div><div><dt>목표 인원</dt><dd>${st.target}명</dd></div>
       <div><dt>IRB 승인번호</dt><dd class="mono">${esc(st.irbNo || "미입력")}</dd></div><div><dt>IRB 만료일</dt><dd>${fmtD(endTs(st.irbUntil))}</dd></div><div><dt>지도교수</dt><dd>${esc(st.advisor || "-")}</dd></div>
       <div><dt>참여 대상</dt><dd>만 ${cr.ageMin}~${cr.ageMax}세 ${cr.statuses.join("·") || "신분 무관"}</dd></div><div><dt>보상</dt><dd>${esc(rewardText(st))}</dd></div>${st.location ? `<div><dt>장소</dt><dd>${esc(st.location)}</dd></div>` : ""}
-      ${st.irbFile ? `<div><dt>IRB 승인 통지서</dt><dd class="body-sm">${st.irbFileId ? `<a class="btn-link" href="/api/file/${esc(st.irbFileId)}">${esc(st.irbFile)}</a>` : esc(st.irbFile)}</dd></div>` : ""}</dl>
+      ${st.irbFile ? `<div><dt>IRB 승인 통지서</dt><dd class="body-sm">${st.irbFileId ? `<button class="btn-link" data-act="dlFile" data-id="${esc(st.irbFileId)}">${esc(st.irbFile)}</button>` : esc(st.irbFile)}</dd></div>` : ""}</dl>
       ${cr.exclude ? `<p class="body-sm slate" style="margin-top:12px"><b>제외 기준</b> ${esc(cr.exclude)}</p>` : ""}</div>
     <div><h2 class="h5" style="margin-bottom:10px">연구설명문</h2><div class="expl">${EXPL.map(([k, t]) => `<details open><summary>${t}</summary><p>${esc(st.explanation[k] || "(작성 전)")}</p></details>`).join("")}</div></div>
     <div class="card"><h2 class="h5" style="margin-bottom:10px">동의서 항목 ${st.consent.length}개</h2><ol class="body-sm charcoal" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">${st.consent.map(c => `<li>${esc(c)}</li>`).join("")}</ol><p class="caption steel" style="margin-top:10px">서명 방식: 성명 입력 전자서명${st.consentCopy ? " · 동의서 사본 이메일 발송" : ""}</p></div>
@@ -1017,7 +1010,7 @@ function aHome(u){
   let body = "";
   if (t === "review") body = rev.length ? `<div class="list">${rev.map(s => { const o = userById(s.ownerId); return `<div class="srow" style="cursor:default"><div><h3>${tintDot(s)}${esc(s.title)}</h3><div class="meta"><span>${esc(o.name)} · ${esc(o.program)} ${o.verified ? '<span class="tag tag-green">연구자 확인됨</span>' : '<span class="tag tag-orange">연구자 미확인</span>'}</span><span>${typeTag(s)}</span><span class="mono">${esc(s.irbNo)}</span><span>제출 ${fmtDT(s.submittedAt)}</span></div></div><div style="text-align:right"><button class="btn btn-primary btn-sm" data-act="aReview" data-id="${s.id}">검토하기</button></div></div>`; }).join("")}</div>` : `<div class="empty">심사를 기다리는 연구가 없어요.</div>`;
   else if (t === "researchers") body = `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>이름</th><th>과정 · 소속</th><th>지도교수</th><th>윤리교육 이수일</th><th>이수증</th><th>상태</th><th></th></tr></thead><tbody>
-    ${pend.sort((a, b) => a.verified - b.verified).map(x => `<tr><td><b>${esc(x.name)}</b><div class="caption steel">${esc(x.email)}</div></td><td class="body-sm">${esc(x.program)}<div class="caption steel">${esc(x.dept)}</div></td><td>${esc(x.advisor)}</td><td class="num">${x.ethicsDate ? fmtD(endTs(x.ethicsDate)) : "-"}</td><td class="caption">${x.ethicsFileId ? `<a class="btn-link" href="/api/file/${esc(x.ethicsFileId)}">${esc(x.ethicsFile)}</a>` : esc(x.ethicsFile || "-")}</td>
+    ${pend.sort((a, b) => a.verified - b.verified).map(x => `<tr><td><b>${esc(x.name)}</b><div class="caption steel">${esc(x.email)}</div></td><td class="body-sm">${esc(x.program)}<div class="caption steel">${esc(x.dept)}</div></td><td>${esc(x.advisor)}</td><td class="num">${x.ethicsDate ? fmtD(endTs(x.ethicsDate)) : "-"}</td><td class="caption">${x.ethicsFileId ? `<button class="btn-link" data-act="dlFile" data-id="${esc(x.ethicsFileId)}">${esc(x.ethicsFile)}</button>` : esc(x.ethicsFile || "-")}</td>
     <td>${x.verified ? '<span class="tag tag-green">확인됨</span>' : '<span class="tag tag-orange">확인 대기</span>'}</td><td>${x.verified ? "" : `<button class="btn btn-primary btn-sm" data-act="verify" data-id="${x.id}">재학·이수 확인</button>`}</td></tr>`).join("")}</tbody></table></div>`;
   else if (t === "rewards") body = `<div class="callout info" style="margin-bottom:16px">${icon("lock",18)}<span>연구자가 지급 처리한 모바일 상품권입니다. 연구자는 참여자의 번호를 볼 수 없으므로 연구지원팀이 상품권을 보낸 뒤 '발송 완료'를 눌러 주세요. 발송 완료 후에는 번호가 다시 가려지고, 참여자에게 발송 안내 문자가 나갑니다.</span></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>가명 ID</th><th>연구</th><th>수신 번호</th><th class="num">금액</th><th>지급 처리</th><th>상태</th><th></th></tr></thead><tbody>
@@ -1051,10 +1044,20 @@ function aReview(u){
 }
 
 /* ========== 렌더 ========== */
+function vVerify(u){
+  return `<div class="auth-wrap"><div class="auth-card card stack">
+    <div class="auth-brand"><img src="${LOGO_HORIZ}" alt="한신대학교"></div>
+    <div><h1 class="h3">이메일 인증을 마쳐 주세요</h1><p class="slate" style="margin-top:8px"><b>${esc(u.email)}</b>로 인증 메일을 보냈어요. 메일의 링크를 누른 뒤 아래 버튼을 눌러 주세요.</p></div>
+    ${S.demo ? `<div class="callout info">${icon("info",18)}<span>에뮬레이터에서는 메일이 실제로 가지 않습니다. 에뮬레이터를 띄운 터미널에 인증 링크가 출력되니 그 주소를 열어 주세요.</span></div>` : ""}
+    <button class="btn btn-primary w100" data-act="checkVerified">인증을 마쳤어요</button>
+    <div class="between"><button class="btn-link" data-act="resendVerify">인증 메일 다시 받기</button><button class="btn-link" data-act="logout">로그아웃</button></div>
+  </div></div>`;
+}
 function render(){
   const u = me();
   let html = "";
   if (!u) html = promo() + (ui.view === "auth" ? vAuth() : vLanding());
+  else if (S.needVerify) html = promo() + vVerify(u);
   else {
     if (!ui.view.startsWith(u.role === "researcher" ? "r-" : u.role === "participant" ? "p-" : "a-")) ui.view = homeOf(u);
     html += shell(u);
@@ -1149,22 +1152,16 @@ const ACT = {
   toAuth: el => { ui.authMode = el.dataset.v; if (el.dataset.role) ui.signRole = el.dataset.role; ui.form = {}; go("auth"); },
   authMode: el => { ui.authMode = el.dataset.v; render(); },
   signRole: el => { ui.signRole = el.dataset.v; render(); },
-  sendCode: async () => {
-    const em = String(ui.form.email || "").trim().toLowerCase();
-    if (!em) return toast("이메일을 먼저 입력해 주세요.");
-    const j = await api("/api/act/sendCode", {email:em, purpose:"signup", role:ui.signRole});
-    toast(j.error || j.toast);
-  },
+  checkVerified: async () => { const j = await call("checkVerified"); if (!j) return; enter(); toast(j.toast); },
+  resendVerify: async () => { const j = await run("resendVerify"); toast(j.error || j.toast); },
+  dlFile: el => HS.downloadFile(el.dataset.id).catch(e => toast(HS.errorText(e))),
   demoLogin: async el => { const j = await call("demoLogin", {who:el.dataset.id}); if (j) enter(); },
   logout: async () => { await call("logout"); $("#toast").classList.add("hide"); ui.form = {}; ui.draft = null; ui.flow = null; go("landing"); },
-  forgot: () => { ui.form.femail = ui.form.lemail || ""; ui.form.fcode = ""; ui.form.fpw = "";
-    openModal({title:"비밀번호 재설정", body:`<p class="body-sm slate">가입한 이메일로 인증번호를 보내 드려요.</p>
-      ${fld("이메일","fg-email",`<div class="row" style="flex-wrap:nowrap"><input class="input" id="fg-email" data-f="femail" type="email" autocomplete="username" value="${fv("femail")}"><button type="button" class="btn btn-secondary" data-act="forgotCode">인증번호 받기</button></div>`)}
-      ${fld("인증번호","fg-code",`<input class="input" id="fg-code" data-f="fcode" inputmode="numeric" maxlength="6" placeholder="6자리">`)}
-      ${fld("새 비밀번호","fg-pw",`<input class="input" id="fg-pw" data-f="fpw" type="password" autocomplete="new-password">`,"10자 이상")}`,
-      actions:[{label:"취소", act:"modalClose"}, {label:"비밀번호 바꾸기", act:"forgotConfirm", cls:"btn-primary"}]}); },
-  forgotCode: async () => { const j = await api("/api/act/sendCode", {email:ui.form.femail, purpose:"reset"}); toast(j.error || j.toast); },
-  forgotConfirm: async () => { const j = await api("/api/act/resetPassword", {email:ui.form.femail, code:ui.form.fcode, pw:ui.form.fpw}); if (j.error) return toast(j.error); ui.modal = null; render(); toast(j.toast); },
+  forgot: () => { ui.form.femail = ui.form.lemail || "";
+    openModal({title:"비밀번호 재설정", body:`<p class="body-sm slate">가입한 이메일로 비밀번호를 다시 정할 수 있는 링크를 보내 드려요.</p>
+      ${fld("이메일","fg-email",`<input class="input" id="fg-email" data-f="femail" type="email" autocomplete="username" value="${fv("femail")}">`)}`,
+      actions:[{label:"취소", act:"modalClose"}, {label:"재설정 메일 받기", act:"forgotConfirm", cls:"btn-primary"}]}); },
+  forgotConfirm: async () => { const j = await run("forgot", {email:ui.form.femail}); if (j.error) return toast(j.error); ui.modal = null; render(); toast(j.toast); },
   modalClose: closeModal, modalBg: closeModal,
 
   newStudy: () => { ui.draft = blankStudy(me()); ui.step = 0; ui.form.pledge = false; go("r-wizard"); },
@@ -1216,12 +1213,12 @@ const ACT = {
     ui.modal = null; const j = await call("pay", {id:el.dataset.id, ids}); if (!j) return; ui.sel = new Set(); done(j); },
   copyLedger: el => { const st = studyById(el.dataset.id); const rows = enrOf(st.id).filter(e => DONE.includes(e.status)).sort((a, b) => a.completedAt - b.completedAt);
     const txt = ["번호\t가명ID\t참여완료일\t지급일\t지급방식\t금액", ...rows.map((e, i) => [i + 1, userById(e.userId).pid, fmtD(e.completedAt), e.paidAt ? fmtD(e.paidAt) : "미지급", st.reward.type, st.reward.amount].join("\t"))].join("\n");
-    api("/api/act/logExport", {id:st.id, kind:"ledger"}); copyText(txt, "지급 대장"); },
+    HS.act("logExport", {id:st.id, kind:"ledger"}).catch(() => {}); copyText(txt, "지급 대장"); },
   copyCSV: el => { const st = studyById(el.dataset.id); const rs = enrOf(st.id).filter(e => e.responses && e.status !== "withdrawn");
     const head = ["pid","completed_at", ...st.survey.map(q => q.id)];
     const cell = v => { const s = Array.isArray(v) ? v.join("|") : (v ?? ""); return /[",\n]/.test(String(s)) ? `"${String(s).replace(/"/g, '""')}"` : s; };
     const txt = [head.join(","), ...rs.map(e => [userById(e.userId).pid, e.completedAt ? fmtD(e.completedAt) : "", ...st.survey.map(q => cell(e.responses[q.id]))].join(","))].join("\n");
-    api("/api/act/logExport", {id:st.id, kind:"csv"}); copyText(txt, "응답 데이터"); },
+    HS.act("logExport", {id:st.id, kind:"csv"}).catch(() => {}); copyText(txt, "응답 데이터"); },
   replyInq: async el => { const k = "rq_" + el.dataset.id; if (!String(ui.form[k] || "").trim()) return toast("답변 내용을 입력해 주세요.");
     const j = await call("replyInquiry", {id:el.dataset.id, body:ui.form[k]}); if (!j) return; ui.form[k] = ""; done(j); },
   reportInq: el => openModal({title:"이 문의를 신고할까요?", body:`<p class="slate">내용이 화면에서 가려지고 연구지원팀이 확인합니다. 연구와 무관한 사적 연락, 폭언, 개인 연락처 요구 등에 사용해 주세요.</p>`, actions:[{label:"취소", act:"modalClose"}, {label:"신고하기", act:"reportConfirm", cls:"btn-dark", data:`data-id="${el.dataset.id}"`}]}),
@@ -1266,9 +1263,9 @@ const ACT = {
   askOpen: el => { ui.form.askBody = ""; openModal({title:"연구자에게 문의하기", body:`<p class="body-sm slate">연구자에게는 가명 ID로만 전달됩니다. 답변은 알림함과 이메일로 알려드려요. 전화번호 같은 개인 연락처는 적지 말아 주세요.</p>
     ${fld("문의 내용","ask-body",`<textarea class="input" id="ask-body" data-f="askBody" rows="5" maxlength="1000" placeholder="예: 예약한 시간을 바꿀 수 있을까요?"></textarea>`)}`,
     actions:[{label:"취소", act:"modalClose"}, {label:"문의 보내기", act:"askSend", cls:"btn-primary", data:`data-id="${el.dataset.id}"`}]}); },
-  askSend: async el => { const j = await api("/api/act/ask", {studyId:el.dataset.id, body:ui.form.askBody}); if (j.error) return toast(j.error); ui.form.askBody = ""; ui.modal = null; render(); toast(j.toast); },
+  askSend: async el => { const j = await run("ask", {studyId:el.dataset.id, body:ui.form.askBody}); if (j.error) return toast(j.error); ui.form.askBody = ""; ui.modal = null; render(); toast(j.toast); },
   togglePause: async () => done(await call("togglePause")),
-  readMsg: el => { const m = S.messages.find(x => x.id === el.dataset.id); if (!m) return; ui.openMsg = ui.openMsg === m.id ? null : m.id; const was = m.read; m.read = true; render(); if (!was) api("/api/act/readMsg", {id:m.id}); },
+  readMsg: el => { const m = S.messages.find(x => x.id === el.dataset.id); if (!m) return; ui.openMsg = ui.openMsg === m.id ? null : m.id; const was = m.read; m.read = true; render(); if (!was) HS.act("readMsg", {id:m.id}).catch(() => {}); },
   readAll: async () => done(await call("readAll")),
   deleteAccount: () => openModal({title:"정말 탈퇴할까요?", body:`<p class="slate">대기풀에서 빠지고 이름·연락처가 삭제됩니다. 진행 중인 참여는 철회 처리되며, 그 응답은 폐기됩니다. 이미 마친 연구의 가명 응답과 동의서는 법령에 따른 보관 기간 동안 남습니다.</p>`, actions:[{label:"취소", act:"modalClose"}, {label:"탈퇴하기", act:"deleteConfirm", cls:"btn-dark"}]}),
   deleteConfirm: async () => { ui.modal = null; const j = await call("deleteAccount"); if (!j) return; ui.form = {}; ui.flow = null; go("landing"); toast(j.toast); },
@@ -1283,7 +1280,11 @@ const ACT = {
 };
 
 /* ========== 시작 ========== */
+// 에뮬레이터에서만: 자동 점검 스크립트가 화면 데이터와 Firestore 접근을 직접 시험할 수 있게 한다.
+if (HS.demo) window.__hs = {state:() => S, act:(n, p) => HS.act(n, p).then(x => ({ok:true, ...x}), e => ({error:HS.errorText(e)})), fs:HS.raw};
+
 (async function start(){
+  await HS.ready;
   await refresh();
   if (S.session && me()) ui.view = homeOf(me());
   render();

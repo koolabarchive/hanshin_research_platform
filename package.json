@@ -1,29 +1,24 @@
 {
   "name": "hanshin-research-platform",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "한신 리서치풀 — 한신대학교 일반대학원 연구참여자 모집 플랫폼",
-  "main": "index.js",
   "scripts": {
-    "start": "node src/server.js",
-    "emulator": "firebase emulators:start --only firestore --project demo-hsrp",
-    "dev": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 DEMO_MODE=1 node --watch src/server.js",
-    "seed": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 node scripts/seed.js",
+    "build": "esbuild web/main.js --bundle --format=esm --minify --target=es2022 --outfile=public/app.js",
+    "emulators": "npm run build && firebase emulators:start --project demo-hsrp",
+    "seed": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 node scripts/seed.js",
     "create-admin": "node scripts/create-admin.js",
-    "test": "firebase emulators:exec --only firestore --project demo-hsrp \"node --test\""
+    "test": "firebase emulators:exec --only firestore,auth --project demo-hsrp \"node --test\""
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
-    "express": "^4.22.3",
     "firebase": "^13.3.0",
-    "firebase-admin": "^14.5.1",
-    "firebase-functions": "^7.4.0",
-    "helmet": "^8.3.0",
-    "nodemailer": "^10.5.0"
+    "firebase-admin": "^14.5.1"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "firebase-tools": "^15.36.0"
   }
 }

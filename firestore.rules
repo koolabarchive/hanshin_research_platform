@@ -1,10 +1,300 @@
 rules_version = '2';
-// 브라우저에서 Firestore를 직접 읽거나 쓸 수 없다.
-// 모든 접근은 서버(Admin SDK)를 거치고, 서버가 역할에 따라 내보낼 정보를 거른다.
+
+// 한신 리서치풀 보안 규칙.
+// 브라우저가 Firestore를 직접 읽고 쓰므로, "누가 무엇을 볼 수 있는가"는 전부 이 파일이 결정한다.
+//
+//  - 참여자의 이름·연락처(users/{uid}/private)와 매칭 정보(pool/{uid})는 본인만 읽는다.
+//    연구자는 읽을 수 없고, 대기풀 초대는 Functions가 대신 한다.
+//  - 연구자는 자기 연구의 참여 기록만 읽는다. 거기에는 가명 ID·신분·연령대·전화번호 끝 4자리만 있다.
+//  - 알림함(messages)·발송 기록(sendLogs)은 Functions만 쓴다. 메일·문자도 Functions가 보낸다.
+//  - 관리자는 admins/{uid} 문서가 있는 계정이다. 이 문서는 콘솔에서만 만든다.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function verified() { return signedIn() && request.auth.token.email_verified == true; }
+    function campusEmail() { return request.auth.token.email.matches('.*@hs[.]ac[.]kr$'); }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(uid())); }
+    function userDoc(u) { return get(/databases/$(database)/documents/users/$(u)).data; }
+    function poolDoc(u) { return get(/databases/$(database)/documents/pool/$(u)).data; }
+    function study(sid) { return get(/databases/$(database)/documents/studies/$(sid)).data; }
+    function enrPath(sid, u) { return /databases/$(database)/documents/enrollments/$(sid + '__' + u); }
+    function slotPath(sid, slot) { return /databases/$(database)/documents/studies/$(sid)/slots/$(slot); }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function fresh() { return request.resource.data; }
+
+    // ── 관리자 표시 ──
+    match /admins/{u} {
+      allow get: if signedIn() && u == uid();
+      allow list, write: if false;
+    }
+
+    // ── 사용자 ──
+    match /users/{u} {
+      allow get: if signedIn() && (u == uid() || isAdmin());
+      allow list: if isAdmin() && resource.data.role == 'researcher';
+      allow create: if signedIn() && u == uid() && (
+        ( fresh().role == 'participant'
+          && fresh().keys().hasOnly(['role', 'pid', 'affiliation', 'createdAt'])
+          && fresh().pid.matches('^P-[0-9]{4,5}$')
+          // 가명 ID는 pids/{pid}에 함께 등록되어야 한다(중복 방지).
+          && getAfter(/databases/$(database)/documents/pids/$(fresh().pid)).data.uid == uid()
+          && fresh().affiliation in ['campus', 'external']
+          && (fresh().affiliation == 'external' || campusEmail()) )
+        ||
+        ( fresh().role == 'researcher'
+          && campusEmail()   // 연구자는 학교 메일로만 가입한다.
+          && fresh().keys().hasOnly(['role', 'name', 'program', 'dept', 'advisor', 'ethicsDate', 'ethicsFile', 'ethicsFileId', 'verified', 'createdAt'])
+          && fresh().verified == false   // 확인은 연구윤리지원팀만 할 수 있다.
+          && fresh().name is string && fresh().name.size() >= 2 && fresh().name.size() <= 30
+          && fresh().dept is string && fresh().dept.size() <= 60
+          && fresh().advisor is string && fresh().advisor.size() <= 40 )
+      );
+      allow update: if signedIn() && (
+        (u == uid() && resource.data.role == 'researcher' && changed().hasOnly(['ethicsFile', 'ethicsFileId']))
+        || (isAdmin() && resource.data.role == 'researcher' && changed().hasOnly(['verified']))
+      );
+      allow delete: if false;
+
+      // 이름·휴대전화·이메일. 본인만 읽고, 관리자는 상품권 발송을 위해 한 건씩만 열람한다.
+      match /private/{docId} {
+        allow get: if signedIn() && (u == uid() || isAdmin());
+        allow list: if false;
+        allow create, update: if signedIn() && u == uid() && docId == 'contact'
+          && fresh().keys().hasOnly(['name', 'phone', 'email'])
+          && fresh().name is string && fresh().name.size() >= 2 && fresh().name.size() <= 30
+          && fresh().phone is string && fresh().phone.matches('^01[0-9]-?[0-9]{3,4}-?[0-9]{4}$')
+          && fresh().email == request.auth.token.email;
+        allow delete: if false;
+      }
+    }
+
+    match /pids/{pid} {
+      allow create: if signedIn() && fresh().keys().hasOnly(['uid']) && fresh().uid == uid();
+      allow read, update, delete: if false;
+    }
+
+    // ── 대기풀(매칭 정보) ──
+    function validPool(d) {
+      return d.keys().hasOnly(['pid', 'birthYear', 'gender', 'status', 'dept', 'year', 'interests', 'times', 'sms', 'joined', 'paused', 'since', 'wantJoin', 'phoneTail'])
+        && d.pid == getAfter(/databases/$(database)/documents/users/$(uid())).data.pid
+        && d.birthYear is int && request.time.year() - d.birthYear >= 19 && d.birthYear >= 1920
+        && d.gender in ['여성', '남성']
+        && d.status in ['학부생', '대학원생', '교직원', '학외 일반인']
+        // 재학생·교직원이라는 것은 학교 메일로만 확인된다.
+        && (d.status == '학외 일반인' || campusEmail())
+        && d.dept is string && d.dept.size() <= 40 && d.year is string && d.year.size() <= 10
+        && d.interests is list && d.interests.size() <= 10 && d.times is list && d.times.size() <= 10
+        && d.sms is bool && d.joined is bool && d.paused is bool && d.wantJoin is bool
+        && d.phoneTail is string && d.phoneTail.matches('^[0-9]{4}$')
+        // 이메일 인증을 마쳐야 안내 대상이 된다.
+        && (d.joined == false || verified());
+    }
+    match /pool/{u} {
+      allow get: if signedIn() && u == uid();
+      allow list: if false;   // 연구자는 대기풀을 읽을 수 없다. 인원수와 초대는 Functions가 처리한다.
+      allow create: if signedIn() && u == uid() && getAfter(/databases/$(database)/documents/users/$(u)).data.role == 'participant' && validPool(fresh());
+      allow update: if signedIn() && u == uid() && validPool(fresh())
+        && changed().hasOnly(['interests', 'times', 'sms', 'joined', 'paused', 'since', 'wantJoin']);
+      allow delete: if false;
+    }
+
+    // ── 연구 ──
+    function validStudy(d) {
+      return d.title is string && d.title.size() <= 120 && d.summary is string && d.summary.size() <= 200
+        && d.type in ['survey', 'lab', 'interview', 'program', 'longitudinal']
+        && d.minutes is int && d.minutes > 0 && d.target is int && d.target > 0
+        && d.start is string && d.end is string && d.irbUntil is string && d.irbNo is string && d.irbNo.size() <= 60
+        && d.explanation is map && d.consent is list && d.consent.size() <= 20
+        && d.survey is list && d.survey.size() <= 80
+        && d.criteria is map && d.criteria.ageMin is int && d.criteria.ageMin >= 19 && d.criteria.ageMax is int
+        && d.criteria.statuses is list && d.criteria.genders is list && d.criteria.depts is list
+        && d.reward is map && d.reward.amount is int && d.reward.amount >= 0
+        && d.templates is map && d.notices is list && d.slotCount is int && d.slotCount >= 0
+        && d.owner.name == userDoc(uid()).name && d.owner.program == userDoc(uid()).program;
+    }
+    function canReadStudy(d) {
+      return isAdmin() || d.ownerUid == uid() || (verified() && d.status in ['recruiting', 'closed']);
+    }
+    match /studies/{sid} {
+      allow read: if signedIn() && canReadStudy(resource.data);
+      allow create: if verified() && userDoc(uid()).role == 'researcher'
+        && fresh().ownerUid == uid() && fresh().status == 'draft' && fresh().doneCount == 0
+        && !('approvedAt' in fresh()) && validStudy(fresh());
+      allow update: if signedIn() && (
+        // 연구자: 작성 중·보완 요청 상태에서만 내용을 고치고, 확인된 연구자만 심사에 제출한다.
+        ( resource.data.ownerUid == uid()
+          && !changed().hasAny(['ownerUid', 'doneCount', 'approvedAt', 'notifyPool'])
+          && (
+            ( resource.data.status in ['draft', 'rejected'] && fresh().status in ['draft', 'review'] && validStudy(fresh())
+              && (fresh().status == 'draft' || (userDoc(uid()).verified == true && verified())) )
+            || ( resource.data.status == 'recruiting' && fresh().status == 'closed' && changed().hasOnly(['status', 'updatedAt']) )
+            // 공개된 연구는 공지와 자동 리마인더 설정만 바꿀 수 있다.
+            || ( resource.data.status in ['recruiting', 'closed'] && changed().hasOnly(['notices', 'templates', 'updatedAt'])
+              && fresh().notices is list && fresh().templates is map )
+          ) )
+        // 연구윤리지원팀: 심사 중인 연구를 승인하거나 보완 요청으로 돌려보낸다.
+        || ( isAdmin() && resource.data.status == 'review' && fresh().status in ['recruiting', 'rejected']
+          && changed().hasOnly(['status', 'reviewComment', 'approvedAt', 'updatedAt', 'start', 'notifyPool']) )
+      );
+      allow delete: if false;
+
+      // 예약 시간. 정원(cap)과 예약 수(booked)를 문서로 두어, 예약은 +1, 철회는 -1만 허용한다.
+      match /slots/{slot} {
+        allow read: if signedIn() && canReadStudy(study(sid));
+        allow create: if signedIn() && study(sid).ownerUid == uid() && study(sid).status in ['draft', 'rejected']
+          && fresh().keys().hasOnly(['at', 'cap', 'booked']) && fresh().at is int && fresh().cap is int && fresh().cap >= 1 && fresh().booked == 0;
+        allow delete: if signedIn() && study(sid).ownerUid == uid() && study(sid).status in ['draft', 'rejected'];
+        allow update: if signedIn() && changed().hasOnly(['booked']) && (
+          // 예약: 동의를 마친 본인의 참여 기록이 같은 트랜잭션에서 '일정 확정'으로 바뀌어야 한다.
+          ( fresh().booked == resource.data.booked + 1 && fresh().booked <= resource.data.cap
+            && get(enrPath(sid, uid())).data.status == 'consented'
+            && getAfter(enrPath(sid, uid())).data.status == 'scheduled'
+            && getAfter(enrPath(sid, uid())).data.slotId == slot )
+          // 철회: 이 시간을 예약했던 본인의 기록이 같은 트랜잭션에서 '철회'로 바뀌어야 한다.
+          || ( fresh().booked == resource.data.booked - 1 && fresh().booked >= 0
+            && get(enrPath(sid, uid())).data.status == 'scheduled'
+            && get(enrPath(sid, uid())).data.slotId == slot
+            && getAfter(enrPath(sid, uid())).data.status == 'withdrawn' )
+        );
+      }
+    }
+
+    // ── 참여 기록 ──  문서 ID = 연구ID__사용자ID (한 사람이 한 연구에 한 번만)
+    function fits(c, p) {
+      return (request.time.year() - p.birthYear) >= c.ageMin && (request.time.year() - p.birthYear) <= c.ageMax
+        && (c.statuses.size() == 0 || p.status in c.statuses)
+        && (c.genders.size() == 0 || p.gender in c.genders)
+        && (c.depts.size() == 0 || p.dept in c.depts);
+    }
+    match /enrollments/{eid} {
+      allow read: if signedIn() && (resource.data.uid == uid() || resource.data.ownerUid == uid());
+      // 직접 신청: 모집 중이고, 조건에 맞고, 정원이 남아 있을 때만.
+      allow create: if verified()
+        && eid == fresh().studyId + '__' + uid() && fresh().uid == uid()
+        && fresh().keys().hasOnly(['studyId', 'uid', 'pid', 'ownerUid', 'status', 'source', 'invitedAt', 'pstatus', 'ageBand', 'phoneTail'])
+        && fresh().status == 'invited' && fresh().source == 'self'
+        && study(fresh().studyId).status == 'recruiting'
+        && fresh().ownerUid == study(fresh().studyId).ownerUid
+        && fresh().pid == userDoc(uid()).pid
+        && fresh().pstatus == poolDoc(uid()).status && fresh().phoneTail == poolDoc(uid()).phoneTail
+        && fits(study(fresh().studyId).criteria, poolDoc(uid()))
+        && study(fresh().studyId).doneCount < study(fresh().studyId).target;
+      allow update: if signedIn() && (
+        ( resource.data.uid == uid() && (
+          // 전자동의: 서명과 동의서 사본(private/consent)이 함께 저장되어야 한다.
+          ( resource.data.status == 'invited' && fresh().status == 'consented'
+            && changed().hasOnly(['status', 'consentAt', 'consentVersion'])
+            && study(resource.data.studyId).status == 'recruiting'
+            && existsAfter(/databases/$(database)/documents/enrollments/$(eid)/private/consent) )
+          // 일정 예약: 같은 트랜잭션에서 그 시간의 예약 수가 1 늘어야 한다(정원은 slots 규칙이 확인).
+          || ( resource.data.status == 'consented' && fresh().status == 'scheduled'
+            && changed().hasOnly(['status', 'slotId', 'responses'])
+            && study(resource.data.studyId).status in ['recruiting', 'closed']
+            && getAfter(slotPath(resource.data.studyId, fresh().slotId)).data.booked == get(slotPath(resource.data.studyId, fresh().slotId)).data.booked + 1 )
+          // 설문만 있는 연구: 제출과 동시에 완료.
+          || ( resource.data.status == 'consented' && fresh().status == 'completed'
+            && changed().hasOnly(['status', 'completedAt', 'responses'])
+            && study(resource.data.studyId).status in ['recruiting', 'closed']
+            && study(resource.data.studyId).slotCount == 0 )
+          // 철회: 예약이 있었다면 같은 트랜잭션에서 자리를 돌려줘야 한다. 폐기를 고르면 응답이 남아 있으면 안 된다.
+          || ( resource.data.status != 'withdrawn' && fresh().status == 'withdrawn'
+            && changed().hasOnly(['status', 'withdrawnAt', 'dataChoice', 'responses'])
+            && (fresh().dataChoice == '보관' || (fresh().dataChoice == '폐기' && !('responses' in fresh())))
+            && ( resource.data.status != 'scheduled'
+              || getAfter(slotPath(resource.data.studyId, resource.data.slotId)).data.booked == get(slotPath(resource.data.studyId, resource.data.slotId)).data.booked - 1 ) )
+        ) )
+        || ( resource.data.ownerUid == uid() && (
+          // 연구자: 방문한 참여자를 완료 처리.
+          ( resource.data.status == 'scheduled' && fresh().status == 'completed' && changed().hasOnly(['status', 'completedAt']) )
+          // 연구자: 보상 지급 처리. 상품권이면 발송 요청(rewards)이 함께 만들어져야 한다.
+          || ( resource.data.status == 'completed' && fresh().status == 'paid' && changed().hasOnly(['status', 'paidAt', 'rewardQueue'])
+            && ( !('rewardQueue' in fresh()) || (fresh().rewardQueue == 'pending' && existsAfter(/databases/$(database)/documents/rewards/$(eid))) ) )
+        ) )
+      );
+      allow delete: if false;
+
+      // 전자서명(실명)과 서명 당시 동의서 사본. 참여자 본인만 읽는다. 연구자에게는 동의 일시만 보인다.
+      match /private/{docId} {
+        allow get: if signedIn() && get(/databases/$(database)/documents/enrollments/$(eid)).data.uid == uid();
+        allow list: if false;
+        allow create: if signedIn() && docId == 'consent'
+          && get(/databases/$(database)/documents/enrollments/$(eid)).data.uid == uid()
+          && fresh().keys().hasOnly(['signature', 'items', 'title', 'irbNo', 'at'])
+          && fresh().signature == get(/databases/$(database)/documents/users/$(uid())/private/contact).data.name;
+        allow update, delete: if false;
+      }
+    }
+
+    // ── 모바일 상품권 발송 요청 ──  연구자는 번호를 모르므로 연구윤리지원팀이 보낸다.
+    match /rewards/{eid} {
+      allow read: if signedIn() && (isAdmin() || resource.data.ownerUid == uid());
+      allow create: if signedIn()
+        && get(/databases/$(database)/documents/enrollments/$(eid)).data.ownerUid == uid()
+        && getAfter(/databases/$(database)/documents/enrollments/$(eid)).data.status == 'paid'
+        && fresh().keys().hasOnly(['uid', 'pid', 'studyId', 'ownerUid', 'study', 'amount', 'paidAt', 'sentAt'])
+        && fresh().ownerUid == uid() && fresh().sentAt == null
+        && fresh().uid == get(/databases/$(database)/documents/enrollments/$(eid)).data.uid
+        && fresh().pid == get(/databases/$(database)/documents/enrollments/$(eid)).data.pid;
+      allow update: if isAdmin() && resource.data.sentAt == null && changed().hasOnly(['sentAt']) && fresh().sentAt is int;
+      allow delete: if false;
+    }
+
+    // ── 알림함·발송 기록 ──  Functions만 쓴다.
+    match /messages/{mid} {
+      allow read: if signedIn() && resource.data.toUid == uid();
+      allow update: if signedIn() && resource.data.toUid == uid() && changed().hasOnly(['read']) && fresh().read == true;
+      allow create, delete: if false;
+    }
+    match /sendLogs/{id} {
+      allow read: if signedIn() && resource.data.ownerUid == uid();
+      allow write: if false;
+    }
+
+    // ── 문의 ──  참여자 → 연구자. 연구자에게는 가명 ID로 보인다.
+    match /inquiries/{id} {
+      allow read: if signedIn() && (resource.data.uid == uid() || resource.data.ownerUid == uid() || (isAdmin() && resource.data.reported == true));
+      allow create: if verified()
+        && fresh().keys().hasOnly(['studyId', 'ownerUid', 'uid', 'pid', 'body', 'at', 'reported'])
+        && fresh().uid == uid() && fresh().pid == userDoc(uid()).pid
+        && fresh().ownerUid == study(fresh().studyId).ownerUid
+        && study(fresh().studyId).status in ['recruiting', 'closed']
+        && fresh().body is string && fresh().body.size() >= 5 && fresh().body.size() <= 1000
+        && fresh().reported == false;
+      allow update: if signedIn() && resource.data.ownerUid == uid() && changed().hasOnly(['reply', 'repliedAt', 'reported'])
+        && (!('reply' in fresh()) || (fresh().reply is string && fresh().reply.size() <= 2000));
+      allow delete: if false;
+    }
+
+    // ── 처리 기록 ──  대부분 Functions가 남긴다. 화면에서 남기는 것(자료 내려받기 등)은 자기 이름으로만.
+    match /audit/{id} {
+      allow read: if signedIn() && (isAdmin() || resource.data.actorUid == uid() || (resource.data.pid != null && resource.data.pid == userDoc(uid()).pid));
+      allow create: if signedIn() && fresh().actorUid == uid()
+        && fresh().keys().hasOnly(['at', 'actorUid', 'actor', 'role', 'action', 'pid', 'client'])
+        && fresh().client == true && fresh().action is string && fresh().action.size() <= 300;
+      allow update, delete: if false;
+    }
+
+    // ── 첨부 파일(이수증·IRB 승인 통지서) ──  올린 본인과 연구윤리지원팀만 읽는다.
+    match /files/{fid} {
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && fresh().ownerUid == uid()
+        && fresh().keys().hasOnly(['ownerUid', 'kind', 'name', 'mime', 'size', 'chunks', 'createdAt'])
+        && fresh().kind in ['ethics', 'irb'] && fresh().mime in ['application/pdf', 'image/png', 'image/jpeg']
+        && fresh().size is int && fresh().size <= 5 * 1024 * 1024 && fresh().chunks is int && fresh().chunks <= 10;
+      allow update, delete: if false;
+      match /chunks/{n} {
+        allow read: if signedIn() && (get(/databases/$(database)/documents/files/$(fid)).data.ownerUid == uid() || isAdmin());
+        allow create: if signedIn() && get(/databases/$(database)/documents/files/$(fid)).data.ownerUid == uid()
+          && fresh().keys().hasOnly(['data']) && fresh().data is bytes;
+        allow update, delete: if false;
+      }
+    }
+
+    // ── 첫 화면 통계 ──  누구나 읽는다. 개인 정보는 없다.
+    match /stats/{docId} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }

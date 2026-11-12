@@ -1,6 +1,7 @@
 node_modules/
-data/
-.env
+public/app.js
 *-debug.log
 .firebase/
 serviceAccount*.json
+.env
+functions/.env*

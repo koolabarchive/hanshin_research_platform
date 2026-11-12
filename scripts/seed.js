@@ -1,23 +1,25 @@
 // 시연용 데이터: 가상의 참여자 341명, 연구자 3명, 연구 5건과 참여·발송 기록.
-// 모든 계정은 synthetic 으로 표시되어 실제 메일·문자가 나가지 않는다. 운영 환경에서는 실행되지 않는다.
-try { process.loadEnvFile(require('node:path').join(__dirname, '..', '.env')); } catch {}
-if (process.env.NODE_ENV === 'production') {
-  console.error('운영 환경에서는 시연용 데이터를 넣을 수 없습니다.');
-  process.exit(1);
-}
-const { db, col, find } = require('../src/db');
-const D = require('../src/domain');
-const { hashPassword, encryptJSON, randomId } = require('../src/security');
+// Firebase 에뮬레이터(Auth + Firestore)에만 넣는다. 가상 계정에는 실제 메일·문자가 나가지 않는다.
+const { initializeApp } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
+const D = require('../functions/domain');
 
-const EMULATOR = process.env.FIRESTORE_EMULATOR_HOST;
+const FS = process.env.FIRESTORE_EMULATOR_HOST;
+const AU = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 // 가상 계정 수백 개를 실제 프로젝트에 넣는 실수를 막는다.
-if (!EMULATOR && !process.argv.includes('--allow-real-project')) {
-  console.error('시연용 데이터는 Firestore 에뮬레이터에만 넣습니다. (npm run emulator 를 띄운 뒤 npm run seed)\n실제 Firebase 프로젝트에 넣으려면 --allow-real-project 를 붙이세요.');
+if (!FS || !AU) {
+  console.error('시연용 데이터는 에뮬레이터에만 넣습니다. npm run emulators 를 띄운 뒤 다른 터미널에서 npm run seed 를 실행하세요.');
   process.exit(1);
 }
+process.env.METADATA_SERVER_DETECTION = 'none';
+const PROJECT = 'demo-hsrp';
+initializeApp({ projectId: PROJECT });
+const db = getFirestore();
+const col = (name) => db.collection(name);
+const randomId = (prefix) => `${prefix}-${require('node:crypto').randomBytes(6).toString('base64url')}`;
 
 const PASSWORD = 'demo-password-1234';
-const hash = hashPassword(PASSWORD);
 const r = D.mulberry32(1109);
 const now = Date.now();
 const DAY = D.DAY;
@@ -30,21 +32,35 @@ const put = (name, id, data) => {
   writes.push([name, id, data]);
   return id;
 };
-const addUser = (cols) => put('users', col('users').doc().id, { password_hash: hash, status: 'active', synthetic: true, joined_at: now, ...cols });
-const pii = (name, phone) => encryptJSON({ name, phone });
+// 로그인할 수 있는 시연 계정(Auth 에뮬레이터에 만든다).
+const logins = [];
+const login = (email, name) => {
+  const uid = `demo-login-${logins.length + 1}`; // 실제 Firebase의 사용자 ID처럼 신원이 드러나지 않는 값
+  logins.push({ uid, email, password: PASSWORD, emailVerified: true, displayName: name });
+  return uid;
+};
+// 이름·연락처. synthetic 표시가 있으면 Functions가 실제 메일·문자를 보내지 않는다.
+const contact = (uid, name, phone, email) => put(`users/${uid}/private`, 'contact', { name, phone, email, synthetic: true });
+const owners = new Map();
 
 async function main() {
-  if (process.argv.includes('--reset') && EMULATOR) {
-    await fetch(`http://${EMULATOR}/emulator/v1/projects/${db.projectId}/databases/(default)/documents`, { method: 'DELETE' });
+  if (process.argv.includes('--reset')) {
+    await fetch(`http://${FS}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
+    await fetch(`http://${AU}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
   }
-  if ((await find(col('users').limit(1))).length) {
-    console.error('이미 데이터가 있습니다. 에뮬레이터라면 npm run seed -- --reset 으로 비우고 다시 넣을 수 있습니다.');
+  if ((await col('users').limit(1).get()).size) {
+    console.error('이미 데이터가 있습니다. npm run seed -- --reset 으로 비우고 다시 넣을 수 있습니다.');
     process.exit(1);
   }
 
-  const adminId = addUser({ role: 'admin', email: 'research-ethics@hs.ac.kr', pii_enc: pii('연구윤리지원팀', ''), verified: true, joined_at: now - 500 * DAY });
+  const adminId = login('research-ethics@hs.ac.kr', '연구윤리지원팀');
+  put('admins', adminId, { createdAt: now });
+  contact(adminId, '연구윤리지원팀', '', 'research-ethics@hs.ac.kr');
   const researcher = (email, name, phone, program, dept, advisor, ethOffset, file, verified, joined) => {
-    const id = addUser({ role: 'researcher', email, pii_enc: pii(name, phone), program, dept, advisor, ethics_date: ymd(ethOffset), verified: !!verified, joined_at: now - joined * DAY });
+    const id = login(email, name);
+    put('users', id, { seeded: true, role: 'researcher', name, program, dept, advisor, ethicsDate: ymd(ethOffset), ethicsFile: '', ethicsFileId: '', verified: !!verified, createdAt: now - joined * DAY });
+    contact(id, name, phone, email);
+    owners.set(id, { name, program, dept });
     return id;
   };
   const r1 = researcher('seoyun.kim@hs.ac.kr', '김서윤', '010-0000-3307', '박사과정', '일반대학원 심리학과 (임상및상담심리)', '박지훈 교수', -240, null, 1, 210);
@@ -53,12 +69,13 @@ async function main() {
 
   const people = []; // {id, profile}
   const addParticipant = (email, name, phone, pid, profile, sms, paused, since) => {
-    const id = addUser({
-      role: 'participant', email, pii_enc: pii(name, phone), pid, profile_enc: encryptJSON(profile), affiliation: profile.status === D.EXTERNAL_STATUS ? 'external' : 'campus',
-      contact_sms: !!sms, pool_joined: true, pool_paused: !!paused, pool_since: since, verified: true, joined_at: since,
-      phone_tail: phone.replace(/\D/g, '').slice(-4), notice_ats: [],
-    });
-    people.push({ id, pid, profile });
+    const id = email === 'haeun.lee@hs.ac.kr' ? login(email, name) : `demo-p-${pid.slice(2)}`;
+    const tail = phone.replace(/\D/g, '').slice(-4);
+    put('users', id, { seeded: true, role: 'participant', pid, affiliation: profile.status === D.EXTERNAL_STATUS ? 'external' : 'campus', createdAt: since });
+    put('pids', pid, { uid: id });
+    contact(id, name, phone, email);
+    put('pool', id, { pid, ...profile, sms: !!sms, joined: true, paused: !!paused, since, wantJoin: true, phoneTail: tail });
+    people.push({ id, pid, profile, tail, paused: !!paused });
     return id;
   };
   const me = addParticipant('haeun.lee@hs.ac.kr', '이하은', '010-0000-1284', 'P-1000',
@@ -99,8 +116,12 @@ async function main() {
     };
     doc.survey = doc.survey.map(({ sample, ...rest }) => rest);
     const slotRows = slots.map((x) => ({ id: randomId('slot'), ...x, booked: 0 }));
-    put('studies', id, { owner_id: owner, status, doc, slots: slotRows, irb_file_id: null, irb_file_name: null, review_comment: null, created_at: now - 30 * DAY, updated_at: now - 2 * DAY, submitted_at: meta.submittedAt || null, approved_at: meta.approvedAt || null });
-    const st = { id, ...doc, slotRows, samples };
+    const row = {
+      ...doc, ownerUid: owner, owner: owners.get(owner), status, slotCount: slotRows.length, doneCount: 0, irbFile: '', irbFileId: '',
+      createdAt: now - 30 * DAY, updatedAt: now - 2 * DAY, ...(meta.submittedAt ? { submittedAt: meta.submittedAt } : {}), ...(meta.approvedAt ? { approvedAt: meta.approvedAt } : {}),
+    };
+    put('studies', id, row);
+    const st = { id, ...doc, ownerUid: owner, slotRows, samples, row };
     studies.push(st);
     return st;
   };
@@ -173,8 +194,13 @@ async function main() {
     }
     return a;
   };
-  const pidOf = new Map(people.map((x) => [x.id, x.pid]));
-  const addEnr = (st, userId, e) => put('enrollments', `${st.id}__${userId}`, { study_id: st.id, user_id: userId, pid: pidOf.get(userId), ...e });
+  const byId = new Map(people.map((x) => [x.id, x]));
+  const addEnr = (st, userId, e) => {
+    const p = byId.get(userId);
+    if (D.DONE.includes(e.status)) st.row.doneCount++;
+    // 연구자에게 보이는 참여자 정보는 가명 ID·신분·연령대·전화번호 끝 네 자리뿐이다.
+    put('enrollments', `${st.id}__${userId}`, { studyId: st.id, uid: userId, pid: p.pid, ownerUid: st.ownerUid, pstatus: p.profile.status, ageBand: D.ageBand(D.ageOf(p.profile, now)), phoneTail: p.tail, ...e });
+  };
   const gen = (st, plan) => {
     const elig = D.shuffle(people.filter((u) => u.id !== me && D.matches(st, u.profile, now)), r);
     const st0 = new Date(`${st.start}T09:00:00+09:00`).getTime();
@@ -184,20 +210,19 @@ async function main() {
       for (let i = 0; i < n && k < elig.length; i++) {
         const u = elig[k++];
         const inv = st0 + r() * span * 0.85;
-        const e = { status, invited_at: Math.round(inv), source: r() < 0.7 ? 'invite' : 'self' };
+        const e = { status, invitedAt: Math.round(inv), source: r() < 0.7 ? 'invite' : 'self' };
         if (status !== 'invited') {
-          e.consent_at = Math.round(Math.min(now - 3600e3, inv + r() * 2 * DAY));
-          e.signature_enc = encryptJSON('(시연용 서명)');
-          e.consent_version = D.fmtD(now - 2 * DAY);
+          e.consentAt = Math.round(Math.min(now - 3600e3, inv + r() * 2 * DAY));
+          e.consentVersion = D.fmtD(now - 2 * DAY);
         }
-        if (!['invited', 'consented', 'withdrawn'].includes(status) && st.survey.length) e.responses_enc = encryptJSON(genResp(st));
+        if (!['invited', 'consented', 'withdrawn'].includes(status) && st.survey.length) e.responses = genResp(st);
         if (status === 'scheduled') {
           const sl = st.slotRows.find((s) => s.booked < s.cap);
-          if (sl) { sl.booked++; e.slot_id = sl.id; }
+          if (sl) { sl.booked++; e.slotId = sl.id; }
         }
-        if (D.DONE.includes(status)) e.completed_at = Math.round(Math.min(now - 1800e3, e.consent_at + r() * DAY * 0.3));
-        if (status === 'paid') { e.paid_at = Math.round(Math.min(now - 600e3, e.completed_at + r() * 4 * DAY)); e.reward_sent_at = e.paid_at + 3600e3; e.reward_queue = 'sent'; }
-        if (status === 'withdrawn') { e.withdrawn_at = e.consent_at + 3600e3; e.data_choice = '폐기'; }
+        if (D.DONE.includes(status)) e.completedAt = Math.round(Math.min(now - 1800e3, e.consentAt + r() * DAY * 0.3));
+        if (status === 'paid') { e.paidAt = Math.round(Math.min(now - 600e3, e.completedAt + r() * 4 * DAY)); e.rewardSentAt = e.paidAt + 3600e3; e.rewardQueue = 'sent'; }
+        if (status === 'withdrawn') { e.withdrawnAt = e.consentAt + 3600e3; e.dataChoice = '폐기'; }
         addEnr(st, u.id, e);
       }
     }
@@ -207,9 +232,10 @@ async function main() {
   gen(s5, [['paid', 150], ['withdrawn', 4]]);
 
   // 시연용 참여자(이하은)의 기록과 알림함
-  addEnr(s5, me, { status: 'paid', invited_at: now - 70 * DAY, consent_at: now - 70 * DAY + 3600e3, signature_enc: encryptJSON('이하은'), consent_version: D.fmtD(now - 82 * DAY), consent_doc_enc: encryptJSON({ title: s5.title, irbNo: s5.irbNo, items: s5.consent }), completed_at: now - 70 * DAY + 5400e3, paid_at: now - 68 * DAY, reward_sent_at: now - 68 * DAY, reward_queue: 'sent', source: 'invite', responses_enc: encryptJSON(genResp(s5)) });
-  addEnr(s1, me, { status: 'invited', invited_at: now - 2 * DAY, source: 'invite' });
-  const mk = (o) => put('messages', randomId('m'), { to_user_id: me, study_id: o.studyId, kind: o.kind, channel: o.channel, subject: o.subject || '', body: o.body, at: o.at, read: !!o.read });
+  addEnr(s5, me, { status: 'paid', invitedAt: now - 70 * DAY, consentAt: now - 70 * DAY + 3600e3, consentVersion: D.fmtD(now - 82 * DAY), completedAt: now - 70 * DAY + 5400e3, paidAt: now - 68 * DAY, rewardSentAt: now - 68 * DAY, rewardQueue: 'sent', source: 'invite', responses: genResp(s5) });
+  put(`enrollments/${s5.id}__${me}/private`, 'consent', { signature: '이하은', items: s5.consent, title: s5.title, irbNo: s5.irbNo, at: now - 70 * DAY + 3600e3 });
+  addEnr(s1, me, { status: 'invited', invitedAt: now - 2 * DAY, source: 'invite' });
+  const mk = (o) => put('messages', randomId('m'), { toUid: me, studyId: o.studyId, kind: o.kind, channel: o.channel, subject: o.subject || '', body: o.body, at: o.at, read: !!o.read });
   mk({ studyId: s5.id, kind: 'invite', channel: 'email', subject: D.fillTpl(s5.templates.inviteSubject, s5, 'P-1000'), body: D.fillTpl(s5.templates.inviteBody, s5, 'P-1000'), at: now - 70 * DAY, read: true });
   mk({ studyId: s5.id, kind: 'complete', channel: 'email', subject: '[한신 리서치풀] 참여해 주셔서 감사합니다', body: `${s5.title} 연구 참여가 완료되었습니다.\n보상(모바일 상품권 3,000원)은 참여 완료 후 3일 이내 처리됩니다.`, at: now - 70 * DAY + 5400e3, read: true });
   mk({ studyId: s5.id, kind: 'reward', channel: 'sms', body: '[한신리서치풀] 연구 참여 보상 모바일 상품권 3,000원이 발송되었습니다.', at: now - 68 * DAY, read: true });
@@ -217,28 +243,37 @@ async function main() {
   mk({ studyId: s1.id, kind: 'invite', channel: 'sms', body: D.fillTpl(s1.templates.sms, s1, 'P-1000'), at: now - 2 * DAY });
   mk({ studyId: s2.id, kind: 'newstudy', channel: 'email', subject: '[한신 리서치풀] 조건에 맞는 새 연구가 열렸어요', body: `${s2.title} 연구가 모집을 시작했습니다.\n대면 실험 · 약 50분 · 현금 20,000원\n로그인해서 연구설명문을 확인해 보세요.`, at: now - 12 * DAY });
 
-  const sl = (studyId, at, kind, channel, segment, count, subject) => put('send_logs', randomId('l'), { study_id: studyId, at, kind, channel, segment, count, subject });
+  const sl = (studyId, at, kind, channel, segment, count, subject) => put('sendLogs', randomId('l'), { studyId, ownerUid: studies.find((x) => x.id === studyId).ownerUid, at, kind, channel, segment, count, subject });
   sl(s1.id, now - 23 * DAY, '초대', '이메일+문자', '대기풀 조건 일치', 60, s1.templates.inviteSubject.replace('{{연구명}}', s1.title));
   sl(s1.id, now - 9 * DAY, '초대', '이메일+문자', '대기풀 조건 일치', 49, s1.templates.inviteSubject.replace('{{연구명}}', s1.title));
   sl(s1.id, now - 5 * DAY, '리마인더', '문자', '초대 후 미응답', 21, '(자동) 초대 3일 후 미응답 리마인더');
   sl(s1.id, now - 3 * DAY, '공지', '이메일', '동의 완료 이상', 72, '[공지] 설문 서버 점검 안내');
   sl(s2.id, now - 12 * DAY, '새 연구 안내', '이메일', '승인 시 자동 안내', 203, '조건에 맞는 새 연구가 열렸어요');
 
-  const au = (at, actorId, actor, role, action) => put('audit', col('audit').doc().id, { at, actor_id: actorId, actor_name: actor, role, action, pid: null });
+  const au = (at, actorId, actor, role, action) => put('audit', col('audit').doc().id, { at, actorUid: actorId, actor, role, action, pid: null, client: false });
   au(now - 20 * DAY, r2, '정민재', '연구자', `모집 마감: ${s5.title}`);
   au(now - 13 * DAY, adminId, '연구윤리지원팀', '관리자', `연구 승인·공개: ${s2.title}`);
   au(now - 4 * DAY, r1, '김서윤', '연구자', `보상 지급 처리 12건 (${s1.title})`);
   au(now - 3 * DAY, r1, '김서윤', '연구자', `공지 등록: 설문 서버 점검 안내 (${s1.title})`);
   au(now - 1 * DAY, r2, '정민재', '연구자', '심사 제출: 불안을 다루는 8회기 집단상담 프로그램');
   au(now - 1 * DAY + 3600e3, null, '오세린', '연구자', '연구자 회원가입 (재학·이수증 확인 대기)');
+  // 예약 수와 완료 인원은 위에서 참여 기록을 만들며 센 값을 쓴다.
+  for (const st of studies) for (const x of st.slotRows) put(`studies/${st.id}/slots`, x.id, { at: x.at, cap: x.cap, booked: x.booked });
+  const enr = writes.filter((x) => x[0] === 'enrollments').map((x) => x[2]);
+  put('stats', 'landing', {
+    participants: people.length, poolActive: people.filter((x) => !x.paused).length, recruiting: studies.filter((x) => x.row.status === 'recruiting').length,
+    done: enr.filter((e) => D.DONE.includes(e.status)).length, paid: enr.filter((e) => e.status === 'paid').length, at: now,
+  });
+
   const w = db.bulkWriter();
   for (const [name, id, data] of writes) w.set(col(name).doc(id), data);
   await w.close();
+  for (const u of logins) await getAuth().createUser(u);
 
-  console.log(`시연용 데이터 ${writes.length}건을 넣었습니다. npm run dev 로 실행하면 로그인 화면에 시연 계정 버튼이 보입니다.
+  console.log(`시연용 데이터 ${writes.length}건과 로그인 계정 ${logins.length}개를 넣었습니다. http://localhost:3000 의 로그인 화면에 시연 계정 버튼이 보입니다.
 직접 로그인할 때의 비밀번호(모든 계정): ${PASSWORD}
   관리자   research-ethics@hs.ac.kr
-  연구자   seoyun.kim@hs.ac.kr (확인됨) · serin.oh@hs.ac.kr (확인 대기)
+  연구자   seoyun.kim@hs.ac.kr (확인됨) · minjae.jung@hs.ac.kr (확인됨) · serin.oh@hs.ac.kr (확인 대기)
   참여자   haeun.lee@hs.ac.kr`);
 }
 
