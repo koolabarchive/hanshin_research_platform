@@ -13,7 +13,7 @@
                           ── Firestore ─────▶  데이터 (보안 규칙 아래에서 직접 읽고 씀)
 ```
 
-- **화면**은 정적 파일입니다. GitHub Pages나 Firebase Hosting에 올립니다.
+- **화면**은 정적 파일입니다. Firebase Hosting에 올립니다.
 - **접근 통제는 `firestore.rules`가 전부 맡습니다.** 누가 무엇을 읽고 쓸 수 있는지는 이 파일을 보면 됩니다.
 - 서버가 없어서 **이메일·문자는 보내지 않습니다.** 초대·안내·일정·보상 알림은 모두 플랫폼 안의 알림함으로 전달되고, 참여자는 로그인해야 확인할 수 있습니다. 가입 인증 메일과 비밀번호 재설정 메일만 Firebase Auth가 직접 보냅니다.
 
@@ -73,9 +73,8 @@ http://localhost:3000 을 열고 `로그인`을 누르면 시연 계정(참여�
    firebase deploy --only firestore
    ```
 
-2. 화면 배포 — 둘 중 하나:
-   - Firebase Hosting: `npm run build && firebase deploy --only hosting` → `https://hsresearch-d0c1a.web.app`
-   - GitHub Pages: `main`에 올리면 `.github/workflows/pages.yml`이 빌드해서 올립니다. 저장소 Settings > Pages > Source 를 "GitHub Actions"로 바꾸고, Firebase 콘솔의 Authentication > Settings > Authorized domains 에 `koolabarchive.github.io`를 추가해야 로그인이 됩니다.
+2. 화면 배포: `npm run build && firebase deploy --only hosting` → `https://hsresearch-d0c1a.web.app`
+   - 자동 배포: 맥북의 프로젝트 폴더에서 `firebase init hosting:github`를 한 번 실행해 배포 권한을 저장소에 등록하면, 그 뒤로는 `main`에 올라올 때마다 `.github/workflows/firebase-hosting-merge.yml`이 빌드해서 배포합니다. 보안 규칙은 자동 배포하지 않습니다.
 3. 관리자 지정: 콘솔의 Authentication에서 연구윤리지원팀 계정을 만든 뒤, Firestore에 `admins` 컬렉션을 만들고 그 계정의 UID를 문서 ID로 하는 문서를 추가합니다(내용은 비워도 됩니다). 서비스 계정 키가 있으면 `ADMIN_EMAIL=... npm run create-admin`으로도 됩니다.
 4. 콘솔의 Authentication > Templates 에서 인증 메일·비밀번호 재설정 메일의 문구와 발신자 이름을 한국어로 바꿉니다.
 
