@@ -113,7 +113,14 @@ function defaultTemplates(){
     remind3: true, remindEnd: true
   };
 }
-async function refresh(){ try { S = await HS.loadState(); } catch(e){ toast(HS.errorText(e)); } }
+// 데이터를 다시 읽는다. 여러 번 겹쳐 불리면 가장 나중에 시작한 것만 반영한다
+// (늦게 도착한 이전 결과가 최신 화면을 덮어쓰지 않게).
+let refreshSeq = 0;
+async function refresh(){
+  const mine = ++refreshSeq;
+  try { const next = await HS.loadState(); if (mine === refreshSeq) S = next; }
+  catch(e){ if (mine === refreshSeq) toast(HS.errorText(e)); }
+}
 // 동작 하나를 실행하고 최신 데이터를 다시 읽는다. 실패하면 {error}를 돌려준다.
 async function run(name, payload){ try { const j = await HS.act(name, payload || {}); await refresh(); return j; } catch(e){ return {error:HS.errorText(e)}; } }
 // 화면을 바꾸는 동작용: 실패하면 이유를 알리고 null을 돌려준다. 같은 요청이 겹쳐 나가지 않게 한다.
@@ -210,7 +217,12 @@ function openModal(m){ ui.modal = m; render(); }
 function closeModal(){ ui.modal = null; render(); }
 
 /* ========== 랜딩 ========== */
+const HOME_LABEL = {admin:"연구윤리지원팀 화면으로", researcher:"내 연구로", participant:"내 참여 현황으로"};
 function topnav(){
+  const u = me();
+  const right = u && !S.needVerify
+    ? `<button class="btn btn-ghost" data-act="logout">로그아웃</button><button class="btn btn-primary" data-act="goHome">${HOME_LABEL[u.role]}</button>`
+    : `<button class="btn btn-ghost" data-act="toAuth" data-v="login">로그인</button><button class="btn btn-primary" data-act="toAuth" data-v="signup">무료로 가입하기</button>`;
   return `<header class="topnav"><div class="in">
     <button class="logo" data-act="go" data-v="landing" aria-label="한신 리서치풀 홈"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="한신대학교 엠블럼">${brand()}</button>
     <nav class="navlinks" aria-label="주요 메뉴">
@@ -219,10 +231,7 @@ function topnav(){
       <button data-act="scrollTo" data-v="safety">안전 원칙</button>
       <button data-act="scrollTo" data-v="faq">자주 묻는 질문</button>
     </nav>
-    <div class="right">
-      <button class="btn btn-ghost" data-act="toAuth" data-v="login">로그인</button>
-      <button class="btn btn-primary" data-act="toAuth" data-v="signup">무료로 가입하기</button>
-    </div></div></header>`;
+    <div class="right">${right}</div></div></header>`;
 }
 function vLanding(){
   const z = S.stats || {}, active = z.poolActive || 0, recruiting = z.recruiting || 0, done = z.done || 0, paid = z.paid || 0, partsN = z.participants || 0;
@@ -444,7 +453,7 @@ function shell(u){
   const roleName = {admin:"관리자", researcher:"연구자", participant:"참여자"}[u.role];
   const av = {admin:["var(--t-peach)","var(--orange-deep)"], researcher:["var(--t-sky)","#0b4f8a"], participant:["var(--t-lav)","var(--purple-800)"]}[u.role];
   return `<div class="shell"><aside class="side" aria-label="메뉴">
-    <div class="ws"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="한신대학교 엠블럼" style="width:30px;height:30px"><span class="names"><b>한신 리서치풀</b><span class="caption steel">한신대학교 일반대학원</span></span></div>${items}
+    <button class="ws" data-act="go" data-v="landing" title="홈페이지로 이동" aria-label="한신 리서치풀 홈페이지로 이동"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="" style="width:30px;height:30px"><span class="names"><b>한신 리서치풀</b><span class="caption steel">한신대학교 일반대학원</span></span></button>${items}
     <div class="me"><span class="avatar" style="background:${av[0]};color:${av[1]}">${esc(u.name[0])}</span><div class="who" style="min-width:0;flex:1"><div class="body-sm" style="font-weight:600">${esc(u.name)}</div><div class="caption steel">${roleName}${u.pid ? " · " + u.pid : ""}</div></div>
     <button class="icon-btn" data-act="logout" title="로그아웃" aria-label="로그아웃">${icon("logout",17)}</button></div>
   </aside><main class="main">${promo()}${content(u)}</main></div>`;
@@ -1057,6 +1066,7 @@ function render(){
   let html = "";
   if (!u) html = promo() + (ui.view === "auth" ? vAuth() : vLanding());
   else if (S.needVerify) html = promo() + vVerify(u);
+  else if (ui.view === "landing") html = promo() + vLanding(); // 로그인한 채로 홈페이지 둘러보기
   else {
     if (!ui.view.startsWith(u.role === "researcher" ? "r-" : u.role === "participant" ? "p-" : "a-")) ui.view = homeOf(u);
     html += shell(u);
@@ -1146,9 +1156,10 @@ const FORMS = {
 // 화면 안에서만 끝나는 동작(탭 이동, 초안 편집)은 그대로 처리하고,
 // 데이터를 바꾸는 동작은 모두 서버에 요청한 뒤 서버가 돌려준 최신 데이터로 다시 그린다.
 const ACT = {
-  go: el => { if (el.dataset.v === "landing" && me()) return go(homeOf(me())); go(el.dataset.v); },
+  go: el => go(el.dataset.v),
+  goHome: () => { const u = me(); go(u ? homeOf(u) : "landing"); },
   scrollTo: el => { const id = el.dataset.v, beh = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"; const t = document.getElementById(id); if (t) return t.scrollIntoView({behavior:beh}); go("landing"); setTimeout(() => { const x = document.getElementById(id); if (x) x.scrollIntoView(); }, 0); },
-  toAuth: el => { ui.authMode = el.dataset.v; if (el.dataset.role) ui.signRole = el.dataset.role; ui.form = {}; go("auth"); },
+  toAuth: el => { if (me()) return go(homeOf(me())); ui.authMode = el.dataset.v; if (el.dataset.role) ui.signRole = el.dataset.role; ui.form = {}; go("auth"); },
   authMode: el => { ui.authMode = el.dataset.v; render(); },
   signRole: el => { ui.signRole = el.dataset.v; render(); },
   checkVerified: async () => { const j = await call("checkVerified"); if (!j) return; enter(); toast(j.toast); },

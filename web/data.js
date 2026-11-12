@@ -220,7 +220,9 @@ export async function loadState() {
   if (!user) { me = null; return base; }
   if (await quiet(one("admins", user.uid), null)) {
     me = { role: "admin", uid: user.uid };
-    return { ...base, ...(await adminState(user)), session: user.uid };
+    const scoped = await adminState(user);
+    if (!auth.currentUser || auth.currentUser.uid !== user.uid) { me = null; return base; }
+    return { ...base, ...scoped, session: user.uid };
   }
   const u = await one("users", user.uid);
   if (!u || u.deleted) { me = null; await signOut(auth); return base; }
@@ -231,6 +233,8 @@ export async function loadState() {
     return { ...base, session: user.uid, needVerify: true, users: [{ id: user.uid, role: u.role, name: me.name || "", email: user.email, pid: u.pid, profile: {}, contact: {}, pool: {} }] };
   }
   const scoped = u.role === "researcher" ? await researcherState(user, u, contact) : await participantState(user, u, contact);
+  // 읽는 동안 로그아웃했거나 다른 계정으로 바뀌었으면 이 결과는 버린다.
+  if (!auth.currentUser || auth.currentUser.uid !== user.uid) { me = null; return base; }
   return { ...base, ...scoped, session: user.uid };
 }
 
