@@ -1,4 +1,4 @@
-// 한신 리서치풀 — 화면 코드.
+// 연구이음 — 화면 코드.
 // 데이터 계층(data.js)이 Firestore에서 읽어 온 데이터(S)를 그리고, 사용자의 동작을 데이터 계층에 전달한다.
 // 이 파일을 고친 뒤에는 npm run build 로 public/app.js 를 다시 만든다.
 import * as HS from "./data.js";
@@ -87,7 +87,7 @@ const icon = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24"
 const LOGO_EMBLEM = "img/emblem.png";
 const LOGO_WHITE = "img/emblem-white.png";
 const LOGO_HORIZ = "img/logo-horizontal.png";
-const brand = () => `<span class="names"><span>한신 리서치풀</span><span class="sub-name">한신대학교 일반대학원</span></span>`;
+const brand = () => `<span class="names"><span>연구이음</span><span class="sub-name">한신대학교 일반대학원</span></span>`;
 
 /* ========== 데이터 ========== */
 // 화면이 그리는 데이터(S). Firestore 보안 규칙이 허용한 것만 읽혀 들어온다.
@@ -117,9 +117,9 @@ function defaultConsent(){
 }
 function defaultTemplates(){
   return {
-    inviteSubject: "[한신 리서치풀] {{연구명}} 참여 안내",
-    inviteBody: "안녕하세요, {{참여자ID}} 님.\n대기풀에 등록하신 조건에 맞는 연구가 있어 안내드립니다.\n\n· 연구명: {{연구명}}\n· 소요 시간: {{소요시간}}\n· 보상: {{보상}}\n· 모집 마감: {{마감일}}\n\n참여 여부는 자유롭게 정하시면 되고, 참여하지 않아도 불이익은 없습니다. 한신 리서치풀에 로그인하면 연구설명문을 확인할 수 있습니다.",
-    sms: "[한신리서치풀] 새 연구 안내: {{소요시간}}, {{보상}}. {{마감일}} 마감. 앱에서 확인하세요.",
+    inviteSubject: "[연구이음] {{연구명}} 참여 안내",
+    inviteBody: "안녕하세요, {{참여자ID}} 님.\n대기풀에 등록하신 조건에 맞는 연구가 있어 안내드립니다.\n\n· 연구명: {{연구명}}\n· 소요 시간: {{소요시간}}\n· 보상: {{보상}}\n· 모집 마감: {{마감일}}\n\n참여 여부는 자유롭게 정하시면 되고, 참여하지 않아도 불이익은 없습니다. 연구이음에 로그인하면 연구설명문을 확인할 수 있습니다.",
+    sms: "[연구이음] 새 연구 안내: {{소요시간}}, {{보상}}. {{마감일}} 마감. 앱에서 확인하세요.",
     remind3: true, remindEnd: true
   };
 }
@@ -234,7 +234,7 @@ function topnav(){
     ? `<button class="btn btn-ghost" data-act="logout">로그아웃</button><button class="btn btn-primary" data-act="goHome">${HOME_LABEL[u.role]}</button>`
     : `<button class="btn btn-ghost" data-act="toAuth" data-v="login">로그인</button><button class="btn btn-primary" data-act="toAuth" data-v="signup">무료로 가입하기</button>`;
   return `<header class="topnav"><div class="in">
-    <button class="logo" data-act="go" data-v="landing" aria-label="한신 리서치풀 홈"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="한신대학교 엠블럼">${brand()}</button>
+    <button class="logo" data-act="go" data-v="landing" aria-label="연구이음 홈"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="한신대학교 엠블럼">${brand()}</button>
     <nav class="navlinks" aria-label="주요 메뉴">
       <button data-act="scrollTo" data-v="features">연구자 도구</button>
       <button data-act="scrollTo" data-v="pool">참여자 대기풀</button>
@@ -334,7 +334,7 @@ function vLanding(){
     <div class="row" style="justify-content:center"><button class="btn btn-primary" data-act="toAuth" data-v="signup" data-role="researcher">연구자로 시작하기</button><button class="btn btn-secondary" data-act="toAuth" data-v="login">${S.demo ? "시연 계정으로 둘러보기" : "로그인"}</button></div></div></section>
 
   <footer class="foot"><div class="wrap foot-grid">
-    <div><img class="foot-brand" src="${LOGO_HORIZ}" alt="한신대학교"><p class="body-sm" style="margin-top:14px;font-weight:600">한신 리서치풀</p><p class="body-sm steel" style="margin-top:4px;max-width:32ch">한신대학교 일반대학원 연구자와 연구참여자를 잇는 모집 플랫폼</p></div>
+    <div><img class="foot-brand" src="${LOGO_HORIZ}" alt="한신대학교"><p class="body-sm" style="margin-top:14px;font-weight:600">연구이음</p><p class="body-sm steel" style="margin-top:4px;max-width:32ch">한신대학교 일반대학원 연구자와 연구참여자를 잇는 모집 플랫폼</p></div>
     <div><h5>연구자</h5><ul><li>연구 등록 안내</li><li>IRB 심사 준비</li><li>보상 지급 기준</li></ul></div>
     <div><h5>참여자</h5><ul><li>대기풀 등록</li><li>참여 철회 방법</li><li>개인정보 처리방침</li></ul></div>
     <div><h5>운영</h5><ul><li>연구윤리지원팀</li><li>기관생명윤리위원회</li><li>학생상담센터</li></ul></div>
@@ -463,7 +463,7 @@ function shell(u){
   const roleName = {admin:"관리자", researcher:"연구자", participant:"참여자"}[u.role];
   const av = {admin:["var(--t-peach)","var(--orange-deep)"], researcher:["var(--t-sky)","#0b4f8a"], participant:["var(--t-lav)","var(--purple-800)"]}[u.role];
   return `<div class="shell"><aside class="side" aria-label="메뉴">
-    <button class="ws" data-act="go" data-v="landing" title="홈페이지로 이동" aria-label="한신 리서치풀 홈페이지로 이동"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="" style="width:30px;height:30px"><span class="names"><b>한신 리서치풀</b><span class="caption steel">한신대학교 일반대학원</span></span></button>${items}
+    <button class="ws" data-act="go" data-v="landing" title="홈페이지로 이동" aria-label="연구이음 홈페이지로 이동"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="" style="width:30px;height:30px"><span class="names"><b>연구이음</b><span class="caption steel">한신대학교 일반대학원</span></span></button>${items}
     <div class="grp">사이트</div><button class="nav-item" data-act="go" data-v="landing">${icon("arrow",17)}<span class="txt">홈페이지 보기</span></button>
     <div class="me"><span class="avatar" style="background:${av[0]};color:${av[1]}">${esc(u.name[0])}</span><div class="who" style="min-width:0;flex:1"><div class="body-sm" style="font-weight:600">${esc(u.name)}</div><div class="caption steel">${roleName}${u.pid ? " · " + u.pid : ""}</div></div>
     <button class="icon-btn" data-act="logout" title="로그아웃" aria-label="로그아웃">${icon("logout",17)}</button></div>
@@ -612,7 +612,7 @@ function tInvite(st, en, c){
 }
 const SEGMENTS = {pending:["초대 후 미응답", e => e.status === "invited"], consented:["동의 후 미완료", e => e.status === "consented"], scheduled:["일정 확정자", e => e.status === "scheduled"], done:["참여 완료자", e => DONE.includes(e.status)], all:["전체 참여자 (철회 제외)", e => e.status !== "withdrawn"]};
 function tSend(st, en){
-  if (ui.form.sendFor !== st.id){ Object.assign(ui.form, {sendFor:st.id, seg:"pending", ch:"app", subj:`[한신 리서치풀] ${st.title} 안내`, body:`{{참여자ID}} 님, ${st.title} 연구 참여 안내를 다시 드려요. 마감은 {{마감일}}입니다.`}); }
+  if (ui.form.sendFor !== st.id){ Object.assign(ui.form, {sendFor:st.id, seg:"pending", ch:"app", subj:`[연구이음] ${st.title} 안내`, body:`{{참여자ID}} 님, ${st.title} 연구 참여 안내를 다시 드려요. 마감은 {{마감일}}입니다.`}); }
   const segN = en.filter(SEGMENTS[ui.form.seg][1]).length;
   const logs = S.sendLogs.filter(l => l.studyId === st.id).sort((a, b) => b.at - a.at);
   return `${appOnlyNote()}<div class="grid-main">

@@ -238,11 +238,11 @@ async function main() {
   addEnr(s1, me, { status: 'invited', invitedAt: now - 2 * DAY, source: 'invite' });
   const mk = (o) => put('messages', randomId('m'), { toUid: me, studyId: o.studyId, kind: o.kind, channel: o.channel, subject: o.subject || '', body: o.body, at: o.at, read: !!o.read });
   mk({ studyId: s5.id, kind: 'invite', channel: 'email', subject: D.fillTpl(s5.templates.inviteSubject, s5, 'P-1000'), body: D.fillTpl(s5.templates.inviteBody, s5, 'P-1000'), at: now - 70 * DAY, read: true });
-  mk({ studyId: s5.id, kind: 'complete', channel: 'email', subject: '[한신 리서치풀] 참여해 주셔서 감사합니다', body: `${s5.title} 연구 참여가 완료되었습니다.\n보상(모바일 상품권 3,000원)은 참여 완료 후 3일 이내 처리됩니다.`, at: now - 70 * DAY + 5400e3, read: true });
-  mk({ studyId: s5.id, kind: 'reward', channel: 'sms', body: '[한신리서치풀] 연구 참여 보상 모바일 상품권 3,000원이 발송되었습니다.', at: now - 68 * DAY, read: true });
+  mk({ studyId: s5.id, kind: 'complete', channel: 'email', subject: '[연구이음] 참여해 주셔서 감사합니다', body: `${s5.title} 연구 참여가 완료되었습니다.\n보상(모바일 상품권 3,000원)은 참여 완료 후 3일 이내 처리됩니다.`, at: now - 70 * DAY + 5400e3, read: true });
+  mk({ studyId: s5.id, kind: 'reward', channel: 'sms', body: '[연구이음] 연구 참여 보상 모바일 상품권 3,000원이 발송되었습니다.', at: now - 68 * DAY, read: true });
   mk({ studyId: s1.id, kind: 'invite', channel: 'email', subject: D.fillTpl(s1.templates.inviteSubject, s1, 'P-1000'), body: D.fillTpl(s1.templates.inviteBody, s1, 'P-1000'), at: now - 2 * DAY });
   mk({ studyId: s1.id, kind: 'invite', channel: 'sms', body: D.fillTpl(s1.templates.sms, s1, 'P-1000'), at: now - 2 * DAY });
-  mk({ studyId: s2.id, kind: 'newstudy', channel: 'email', subject: '[한신 리서치풀] 조건에 맞는 새 연구가 열렸어요', body: `${s2.title} 연구가 모집을 시작했습니다.\n대면 실험 · 약 50분 · 현금 20,000원\n로그인해서 연구설명문을 확인해 보세요.`, at: now - 12 * DAY });
+  mk({ studyId: s2.id, kind: 'newstudy', channel: 'email', subject: '[연구이음] 조건에 맞는 새 연구가 열렸어요', body: `${s2.title} 연구가 모집을 시작했습니다.\n대면 실험 · 약 50분 · 현금 20,000원\n로그인해서 연구설명문을 확인해 보세요.`, at: now - 12 * DAY });
 
   const sl = (studyId, at, kind, channel, segment, count, subject) => put('sendLogs', randomId('l'), { studyId, ownerUid: studies.find((x) => x.id === studyId).ownerUid, at, kind, channel, segment, count, subject });
   sl(s1.id, now - 23 * DAY, '초대', '이메일+문자', '대기풀 조건 일치', 60, s1.templates.inviteSubject.replace('{{연구명}}', s1.title));

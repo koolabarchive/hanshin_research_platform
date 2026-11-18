@@ -279,7 +279,7 @@ const ROLE_NAME = { admin: "관리자", researcher: "연구자", participant: "�
 const log = (action, pid = null) => quiet(addDoc(col("audit"), { at: Date.now(), actorUid: uidNow(), actor: me.role === "admin" ? "연구윤리지원팀" : me.role === "participant" ? me.pid : me.name, role: ROLE_NAME[me.role], action, pid: pid || (me.role === "participant" ? me.pid : null), client: true }));
 
 // 알림함에 한 건 남긴다. 이메일·문자는 나가지 않는다. 규칙: 본인, 그 연구의 담당 연구자, 관리자만 쓸 수 있다.
-const SITE = "한신 리서치풀";
+const SITE = "연구이음";
 const putMsg = (batch, toUid, study, kind, subject, body) => batch.set(doc(col("messages")), { toUid, studyId: study ? study.id : null, ownerUid: study ? study.ownerUid : null, kind, channel: "app", subject: String(subject).slice(0, 200), body: String(body).slice(0, 3000), at: Date.now(), read: false });
 const sendMsg = (toUid, study, kind, subject, body) => { const b = writeBatch(db); putMsg(b, toUid, study, kind, subject, body); return quiet(b.commit()); };
 // 규칙이 한 번의 쓰기에서 조회할 수 있는 문서 수에 한도가 있어, 여러 건은 조금씩 나눠 쓴다.

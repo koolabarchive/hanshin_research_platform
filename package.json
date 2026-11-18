@@ -2,7 +2,7 @@
   "name": "hanshin-research-platform",
   "version": "0.4.0",
   "private": true,
-  "description": "한신 리서치풀 — 한신대학교 일반대학원 연구참여자 모집 플랫폼",
+  "description": "연구이음 — 한신대학교 일반대학원 연구참여자 모집 플랫폼",
   "scripts": {
     "build": "esbuild web/main.js --bundle --format=esm --minify --target=es2022 --outfile=public/app.js",
     "emulators": "npm run build && firebase emulators:start --project demo-hsrp",
