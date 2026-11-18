@@ -69,6 +69,8 @@ const IC = {
   gift:'<rect x="3.5" y="8" width="17" height="4" rx="1"/><path d="M5 12v8.5h14V12M12 8v12.5M12 8c-1.5-3.5-5.5-4-5.5-1.5S10 8 12 8zm0 0c1.5-3.5 5.5-4 5.5-1.5S14 8 12 8z"/>',
   file:'<path d="M14 3H6.5v18h11V6.5z"/><path d="M14 3v3.5h3.5M9 12h6M9 16h6"/>',
   logout:'<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/>',
+  menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',
+  close:'<path d="M6 6l12 12M18 6L6 18"/>',
   bell:'<path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   chart:'<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
   trash:'<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/>',
@@ -93,7 +95,7 @@ const brand = () => `<span class="names"><span>연구이음</span><span class="s
 // 화면이 그리는 데이터(S). Firestore 보안 규칙이 허용한 것만 읽혀 들어온다.
 // 이 파일은 받은 것을 그리기만 하고, 권한 판단은 하지 않는다.
 let S = {session:null, demo:false, users:[], studies:[], enrollments:[], inquiries:[], messages:[], sendLogs:[], audit:[], stats:{}};
-const ui = {view:"landing", p:{}, tab:"overview", authMode:"login", signRole:"participant", code:null, form:{}, draft:null, step:0, flow:null, filter:"all", sel:new Set(), modal:null, adminTab:"review", openMsg:null, pFilter:"all", pOnlyFit:false};
+const ui = {view:"landing", p:{}, tab:"overview", authMode:"login", signRole:"participant", code:null, form:{}, draft:null, step:0, flow:null, filter:"all", sel:new Set(), modal:null, adminTab:"review", openMsg:null, pFilter:"all", pOnlyFit:false, drawer:false};
 
 function defaultExplanation(o){
   return {
@@ -227,7 +229,7 @@ function openModal(m){ ui.modal = m; render(); }
 function closeModal(){ ui.modal = null; render(); }
 
 /* ========== 랜딩 ========== */
-const HOME_LABEL = {admin:"연구윤리지원팀 화면으로", researcher:"내 연구로", participant:"내 참여 현황으로"};
+const HOME_LABEL = {admin:"관리 화면으로", researcher:"내 연구로", participant:"내 참여 현황으로"};
 function topnav(){
   const u = me();
   const right = u && !S.needVerify
@@ -260,7 +262,7 @@ function vLanding(){
     <div class="hero-in">
       <img class="hero-emb" src="${LOGO_WHITE}" alt="한신대학교 엠블럼">
       <span class="hero-chip"><i></i>한신대학교 일반대학원 연구자를 위한 참여자 모집 플랫폼</span>
-      <h1>연구참여자 모집을<br>안전하고 꾸준하게</h1>
+      <h1>연구참여자 모집을 <br>안전하고 꾸준하게</h1>
       <p class="sub">IRB 승인을 확인한 연구만 공개하고, 참여자 연락처는 플랫폼이 대신 보관합니다. 대기풀에 한 번 등록한 참여자에게는 조건에 맞는 연구가 열릴 때마다 안내가 갑니다.</p>
       <div class="ctas">
         <button class="btn btn-primary" data-act="toAuth" data-v="signup" data-role="participant">연구참여자로 등록하기</button>
@@ -446,28 +448,40 @@ function signupForm(){
 /* ========== 앱 셸 ========== */
 function shell(u){
   const nav = (v, ic, label, extra = "", data = "") => `<button class="nav-item ${ui.view===v && !data ? "on" : ""}" data-act="go" data-v="${v}" ${data}>${icon(ic,17)}<span class="txt">${label}</span>${extra}</button>`;
-  let items = "";
+  let items = "", tabs = [];
+  const tab = (on, attrs, ic, label, n = 0) => ({on, attrs, ic, label, n});
   if (u.role === "researcher"){
     const mine = S.studies.filter(s => s.ownerId === u.id);
     items = nav("r-home","home","홈") + `<button class="nav-item ${ui.view==="r-wizard"?"on":""}" data-act="newStudy">${icon("plus",17)}<span class="txt">새 연구 등록</span></button>`
       + `<div class="grp">내 연구</div>` + mine.map(s => `<button class="nav-item ${ui.view==="r-study"&&ui.p.id===s.id?"on":""}" data-act="openStudy" data-id="${s.id}">${tintDot(s)}<span class="txt">${esc(s.title || "제목 없는 연구")}</span></button>`).join("")
       + `<div class="grp">도구</div>` + nav("r-pool","users","대기풀 현황") + nav("r-logs","mail","발송 기록");
+    tabs = [tab(ui.view==="r-home", `data-act="go" data-v="r-home"`, "home", "홈"), tab(ui.view==="r-wizard", `data-act="newStudy"`, "plus", "새 연구"), tab(ui.view==="r-pool", `data-act="go" data-v="r-pool"`, "users", "대기풀"), tab(ui.view==="r-logs", `data-act="go" data-v="r-logs"`, "mail", "발송 기록")];
   } else if (u.role === "participant"){
     const unread = S.messages.filter(m => m.toUserId === u.id && !m.read).length;
     items = nav("p-home","home","홈") + nav("p-studies","search","모집 중인 연구") + nav("p-history","list","내 참여 기록") + nav("p-inbox","inbox","알림함", unread ? `<span class="cnt num">${unread}</span>` : "") + nav("p-profile","user","내 정보·대기풀");
+    tabs = [["p-home","home","홈"],["p-studies","search","연구 찾기"],["p-history","list","참여 기록"],["p-inbox","inbox","알림함",unread],["p-profile","user","내 정보"]].map(([v, ic, label, n]) => tab(ui.view===v || (v==="p-studies" && ["p-study","p-flow"].includes(ui.view)), `data-act="go" data-v="${v}"`, ic, label, n));
   } else {
     const rev = S.studies.filter(s => s.status === "review").length, pend = S.users.filter(x => x.role === "researcher" && !x.verified).length;
     const an = (t, ic, label, n) => `<button class="nav-item ${(ui.view==="a-home"&&ui.adminTab===t)||(ui.view==="a-review"&&t==="review")?"on":""}" data-act="aTab" data-v="${t}">${icon(ic,17)}<span class="txt">${label}</span>${n?`<span class="cnt num">${n}</span>`:""}</button>`;
     items = an("review","shield","심사 대기",rev) + an("researchers","user","연구자 확인",pend) + an("rewards","gift","보상 발송",(S.rewardQueue || []).filter(r => !r.sentAt).length) + an("studies","list","전체 연구") + an("audit","eye","처리 기록");
+    tabs = [["review","shield","심사",rev],["researchers","user","연구자",pend],["rewards","gift","보상",(S.rewardQueue || []).filter(r => !r.sentAt).length],["studies","list","연구"],["audit","eye","기록"]].map(([t, ic, label, n]) => tab((ui.view==="a-home"&&ui.adminTab===t)||(ui.view==="a-review"&&t==="review"), `data-act="aTab" data-v="${t}"`, ic, label, n));
   }
   const roleName = {admin:"관리자", researcher:"연구자", participant:"참여자"}[u.role];
   const av = {admin:["var(--t-peach)","var(--orange-deep)"], researcher:["var(--t-sky)","#0b4f8a"], participant:["var(--t-lav)","var(--purple-800)"]}[u.role];
-  return `<div class="shell"><aside class="side" aria-label="메뉴">
-    <button class="ws" data-act="go" data-v="landing" title="홈페이지로 이동" aria-label="연구이음 홈페이지로 이동"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="" style="width:30px;height:30px"><span class="names"><b>연구이음</b><span class="caption steel">한신대학교 일반대학원</span></span></button>${items}
+  const tabbar = `<nav class="tabbar" aria-label="주요 메뉴">
+    <button class="tab tab-menu" data-act="drawerOpen" aria-label="전체 메뉴 열기" aria-expanded="${ui.drawer}" aria-controls="drawer">${icon("menu",22)}<span class="tl">메뉴</span></button>
+    ${tabs.map(t => `<button class="tab ${t.on ? "on" : ""}" ${t.attrs} ${t.on ? `aria-current="page"` : ""} title="${t.label}">${icon(t.ic,22)}<span class="tl">${t.label}</span>${t.n ? `<span class="cnt num">${t.n}</span>` : ""}</button>`).join("")}
+  </nav>`;
+  return `<div class="shell ${ui.drawer ? "drawer-open" : ""}"><aside class="side" id="drawer" aria-label="메뉴">
+    <div class="side-top"><button class="ws" data-act="go" data-v="landing" title="홈페이지로 이동" aria-label="연구이음 홈페이지로 이동"><img class="logo-emb" src="${LOGO_EMBLEM}" alt="" style="width:30px;height:30px"><span class="names"><b>연구이음</b><span class="caption steel">한신대학교 일반대학원</span></span></button>
+    <button class="icon-btn side-close" data-act="drawerClose" aria-label="메뉴 닫기">${icon("close",20)}</button></div>${items}
     <div class="grp">사이트</div><button class="nav-item" data-act="go" data-v="landing">${icon("arrow",17)}<span class="txt">홈페이지 보기</span></button>
     <div class="me"><span class="avatar" style="background:${av[0]};color:${av[1]}">${esc(u.name[0])}</span><div class="who" style="min-width:0;flex:1"><div class="body-sm" style="font-weight:600">${esc(u.name)}</div><div class="caption steel">${roleName}${u.pid ? " · " + u.pid : ""}</div></div>
     <button class="icon-btn" data-act="logout" title="로그아웃" aria-label="로그아웃">${icon("logout",17)}</button></div>
-  </aside><main class="main">${promo()}${content(u)}</main></div>`;
+  </aside><div class="scrim" data-act="drawerClose" aria-hidden="true"></div>${tabbar}
+  <main class="main"><header class="appbar"><button class="icon-btn" data-act="drawerOpen" aria-label="전체 메뉴 열기" aria-expanded="${ui.drawer}" aria-controls="drawer">${icon("menu",22)}</button>
+    <button class="logo" data-act="go" data-v="landing" aria-label="연구이음 홈페이지로 이동"><img class="logo-emb" src="${LOGO_EMBLEM}" alt=""><span>연구이음</span></button>
+    <span class="appbar-role caption steel">${roleName}</span></header>${promo()}${content(u)}</main></div>`;
 }
 function content(u){
   const v = ui.view;
@@ -792,7 +806,7 @@ function w5(d){
   const cr = d.criteria;
   const chips = (path, opts) => `<div class="chips">${opts.map((o, i) => `<label class="chip"><input type="checkbox" id="${path.replace(/\./g,"-")}-${i}" data-arr="${path}" value="${esc(o)}" ${getPath(d, path).includes(o)?"checked":""}>${esc(o)}</label>`).join("")}</div>`;
   return `<p class="slate body-sm" style="margin-bottom:24px">대기풀에서 안내를 받을 사람을 정합니다. 아무것도 고르지 않은 항목은 제한 없음으로 처리됩니다.</p>
-  <div class="grid-main" style="grid-template-columns:minmax(0,1fr) 240px"><div class="form-grid">
+  <div class="grid-main narrow-aside"><div class="form-grid">
     <div class="two">${fld("최소 나이(만)","w-amin",`<input class="input num" id="w-amin" type="number" min="19" ${bindIn("criteria.ageMin", d)}>`,"플랫폼 가입은 만 19세 이상만 가능합니다.")}${fld("최대 나이(만)","w-amax",`<input class="input num" id="w-amax" type="number" min="19" ${bindIn("criteria.ageMax", d)}>`)}</div>
     <div class="field"><span class="label">신분</span>${chips("criteria.statuses", STATUSES)}</div>
     <div class="field"><span class="label">성별</span>${chips("criteria.genders", GENDERS)}</div>
@@ -1089,7 +1103,18 @@ function render(){
     html += shell(u);
   }
   $("#app").innerHTML = html + modalHtml();
+  afterRender();
   updateLive();
+}
+// 좁은 화면에서 표를 카드로 쌓을 때 쓰는 머리글 라벨을 붙이고, 가로로 넘기는 탭은 현재 항목이 보이게 한다.
+function afterRender(){
+  document.querySelectorAll("table.tbl").forEach(t => {
+    const heads = [...t.querySelectorAll("thead th")].map(th => th.textContent.trim());
+    t.querySelectorAll("tbody tr").forEach(tr => [...tr.children].forEach((td, i) => { if (td.colSpan > 1) td.classList.add("td-full"); else td.dataset.th = heads[i] || ""; }));
+  });
+  document.querySelectorAll(".seg .on, .wiz-steps .on").forEach(el => { const box = el.parentElement; if (box.scrollWidth > box.clientWidth) box.scrollLeft = el.offsetLeft - (box.clientWidth - el.offsetWidth) / 2; });
+  if (ui.drawer && !afterRender.wasOpen){ const f = $("#drawer .ws"); if (f) f.focus({preventScroll:true}); }
+  afterRender.wasOpen = ui.drawer;
 }
 function updateLive(){
   document.querySelectorAll("[data-bytes]").forEach(el => {
@@ -1136,17 +1161,19 @@ function onInput(e){
   }
   updateLive();
 }
+matchMedia("(min-width:1024px)").addEventListener("change", e => { if (e.matches && ui.drawer){ ui.drawer = false; render(); } });
 document.addEventListener("input", onInput);
 document.addEventListener("change", onInput);
 document.addEventListener("submit", e => { e.preventDefault(); const f = e.target.dataset.form; if (FORMS[f]) FORMS[f](); });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && ui.modal) closeModal(); });
+document.addEventListener("keydown", e => { if (e.key !== "Escape") return; if (ui.modal) closeModal(); else if (ui.drawer){ ui.drawer = false; render(); const b = $(".appbar [data-act=drawerOpen]") || $(".tabbar [data-act=drawerOpen]"); if (b) b.focus(); } });
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]"); if (!el) return;
   if (el.dataset.act === "modalBg" && e.target !== el) return;
+  if (ui.drawer && el.closest(".side") && el.dataset.act !== "drawerClose") ui.drawer = false;
   const fn = ACT[el.dataset.act]; if (fn){ if (el.tagName !== "INPUT") e.preventDefault(); fn(el, e); }
 });
 function go(view, p = {}){
-  ui.view = view; ui.p = p; ui.modal = null; render(); window.scrollTo(0, 0);
+  ui.view = view; ui.p = p; ui.modal = null; ui.drawer = false; render(); window.scrollTo(0, 0);
   // 화면을 옮길 때 서버의 최신 데이터를 받아 온다. 입력 중인 화면은 건드리지 않는다.
   if (S.session && !["r-wizard","p-flow"].includes(view)) refresh().then(() => { const a = document.activeElement; if (ui.view === view && !ui.modal && !(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) render(); });
 }
@@ -1193,6 +1220,7 @@ const ACT = {
       actions:[{label:"취소", act:"modalClose"}, {label:"재설정 메일 받기", act:"forgotConfirm", cls:"btn-primary"}]}); },
   forgotConfirm: async () => { const j = await run("forgot", {email:ui.form.femail}); if (j.error) return toast(j.error); ui.modal = null; render(); toast(j.toast); },
   modalClose: closeModal, modalBg: closeModal,
+  drawerOpen: () => { ui.drawer = true; render(); }, drawerClose: () => { ui.drawer = false; render(); },
 
   newStudy: () => { ui.draft = blankStudy(me()); ui.step = 0; ui.form.pledge = false; go("r-wizard"); },
   editStudy: el => { ui.draft = clone(studyById(el.dataset.id)); ui.step = 0; ui.form.pledge = false; go("r-wizard"); },
